@@ -268,16 +268,33 @@ def _install_global_dismiss():
 def show_tooltip_popover(widget, key):
     """Düğmenin yanında açılan kompakt açıklama baloncuğu (penceresiz)."""
     import customtkinter as ctk
-    if _popover.get("suppress") is widget:
+    try:
+        if _popover.get("suppress") is widget:
+            _popover["suppress"] = None
+            _close_popover()
+            return  # toggle: aynı düğmeye ikinci basış kapatır
         _popover["suppress"] = None
         _close_popover()
-        return  # toggle: aynı düğmeye ikinci basış kapatır
-    _popover["suppress"] = None
-    _close_popover()
-    _install_global_dismiss()
-    _popover["seq"] = _popover.get("seq", 0) + 1
-    _seq = _popover["seq"]
-    _popover["owner"] = widget
+        _install_global_dismiss()
+        _popover["seq"] = _popover.get("seq", 0) + 1
+        _seq = _popover["seq"]
+        _popover["owner"] = widget
+        _open_popover_window(widget, key, _seq)
+        try:
+            from deprem_izleme.errors import diag
+            diag(f"popover açıldı: {key} (seq={_seq})")
+        except Exception:
+            pass
+    except Exception as ex:
+        try:
+            from deprem_izleme.errors import log_error
+            log_error(ex, f"popover acma: {key}")
+        except Exception:
+            pass
+
+
+def _open_popover_window(widget, key, _seq):
+    import customtkinter as ctk
     text = TOOLTIPS.get(key, f"Açıklama bulunamadı: {key}")
     first, _, rest = text.partition("\n")
 
@@ -312,6 +329,11 @@ def show_tooltip_popover(widget, key):
     y = max(4, min(y, sh - bh - 8))
     tip.geometry(f"{bw}x{bh}+{x}+{y}")
     tip.deiconify()
+    try:
+        tip.lift()
+        tip.update_idletasks()
+    except Exception:
+        pass
     _popover["win"] = tip
 
     def _away(_e=None):
