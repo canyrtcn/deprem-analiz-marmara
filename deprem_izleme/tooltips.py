@@ -220,10 +220,47 @@ def _popover_colors():
             "text": "#C6CEDB", "border": "#1E2A3F"}
 
 
+_dismiss_installed = False
+
+
+def _install_global_dismiss():
+    """Uygulamada herhangi bir yere tıklanınca baloncuğu kapat (tek seferlik kurulum)."""
+    global _dismiss_installed
+    if _dismiss_installed:
+        return
+    _dismiss_installed = True
+    try:
+        import tkinter as _tk
+
+        def _on_any_click(ev=None):
+            try:
+                pop = _popover.get("win")
+                if pop is None:
+                    return
+                w = ev.widget if ev is not None else None
+                while w is not None:
+                    if w == pop:
+                        return  # baloncuk içine tıklandı
+                    try:
+                        w = w.master
+                    except Exception:
+                        break
+                _close_popover()
+            except Exception:
+                pass
+
+        root = _tk._default_root
+        if root is not None:
+            root.bind_all("<ButtonPress-1>", _on_any_click, add="+")
+    except Exception:
+        pass
+
+
 def show_tooltip_popover(widget, key):
     """Düğmenin yanında açılan kompakt açıklama baloncuğu (penceresiz)."""
     import customtkinter as ctk
     _close_popover()
+    _install_global_dismiss()
     text = TOOLTIPS.get(key, f"Açıklama bulunamadı: {key}")
     first, _, rest = text.partition("\n")
 
@@ -267,7 +304,6 @@ def show_tooltip_popover(widget, key):
         tip.bind("<Escape>", _away)
         tip.bind("<Button-1>", _away)
         tip.after(12000, _close_popover)
-        tip.focus_force()
     except Exception:
         pass
 

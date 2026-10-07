@@ -106,7 +106,7 @@ def _apply_startup_theme():
             "COLOR_ENTRY_BORDER": "#CBD5E1",
             "COLOR_TRACK": "#E2E8F0",
             "COLOR_NAV_ACTIVE": "#E2E8F0",
-            "COLOR_NAV_HOVER": "#D8E2EE",
+            "COLOR_NAV_HOVER": "#CBD5E1",
         })
         return True
     except Exception:
@@ -155,6 +155,9 @@ class DepremGUI(ctk.CTk):
         self.geometry("1360x820")
         self.minsize(1100, 700)
         self._alive = True
+        self._refresh_lock = threading.Lock()
+        self._history_backfilled = False
+        self._refreshed_once = False
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.configure(fg_color=COLOR_MAIN_BG)
         self.bind("<Map>", self._on_map_window)
@@ -201,6 +204,7 @@ class DepremGUI(ctk.CTk):
 
         self.pages = {}
         self._page_builders = {}
+        self._building_pages = set()
         self._build_dashboard()  # Sadece ana sayfayı hemen yap
         self._page_builders = {
             "risk-analiz": self._build_risk_analysis,
@@ -223,6 +227,11 @@ class DepremGUI(ctk.CTk):
         self._safe_after(300, self.refresh_all)
         self._safe_after(1500, self._startup_fetch_once)
         self._safe_after(2500, self._prebuild_pages)
+        self._safe_after(15000, self._refresh_if_stale)
+        try:
+            threading.Thread(target=self._early_backfill, daemon=True).start()
+        except Exception:
+            pass
 
     def _prebuild_pages(self):
         """Hafif sayfaları boşta önden hazırla (ağır grafik/haber hariç)."""
@@ -232,8 +241,12 @@ class DepremGUI(ctk.CTk):
                 continue
             try:
                 self._page_builders[name]()
-            except Exception:
-                pass
+            except Exception as ex:
+                try:
+                    from deprem_izleme.errors import log_error
+                    log_error(ex, f"sayfa on-hazirlik: {name}")
+                except Exception:
+                    pass
         try:
             self.refresh_all()
         except Exception:
@@ -345,6 +358,7 @@ class DepremGUI(ctk.CTk):
                      text_color=COLOR_ACCENT).pack(anchor="w", pady=(2, 14))
 
         self.nav_btns = {}
+        self.nav_indicators = {}
         groups = [
             ("İzleme", [("ana-sayfa", "⌂  Ana Sayfa"),
                         ("harita", "◉  Harita"),
@@ -362,47 +376,55 @@ class DepremGUI(ctk.CTk):
                          text_color=COLOR_TEXT2).pack(anchor="w", padx=18,
                                                       pady=(14 if gi else 4, 2))
             for key, label in items:
+                row = ctk.CTkFrame(sb, fg_color="transparent")
+                row.pack(fill="x", padx=8, pady=1)
+                ind = ctk.CTkFrame(row, fg_color="transparent", width=3, corner_radius=2)
+                ind.pack(side="left", fill="y", padx=(2, 0))
+                ind.pack_propagate(False)
                 btn = ctk.CTkButton(
-                    sb, text=label,
+                    row, text=label,
                     font=ctk.CTkFont(size=12),
                     fg_color="transparent", hover_color=COLOR_NAV_HOVER,
                     text_color=COLOR_TEXT, anchor="w",
                     height=32, corner_radius=8, border_width=0,
                     command=lambda k=key: self.switch_page(k)
                 )
-                btn.pack(fill="x", padx=8, pady=1)
+                btn.pack(side="left", fill="x", expand=True)
                 self.nav_btns[key] = btn
+                self.nav_indicators[key] = ind
 
         # Sidebar footer
         div2 = ctk.CTkFrame(sb, fg_color=COLOR_CARD_BORDER, height=1, corner_radius=0)
         div2.pack(fill="x", padx=18, pady=(10, 8))
-        sf = ctk.CTkFrame(sb, fg_color="transparent")
-        sf.pack(fill="x", padx=18, pady=(0, 15))
+        sf = ctk.CTkFrame(sb, fg_color=COLOR_CARD_BG, corner_radius=8,
+                          border_width=1, border_color=COLOR_CARD_BORDER)
+        sf.pack(fill="x", padx=12, pady=(0, 12))
+        sf.grid_columnconfigure(0, weight=1)
 
         self.sidebar_status = ctk.CTkLabel(
             sf, text="Son güncelleme: —",
             font=ctk.CTkFont(size=10), text_color=COLOR_TEXT
         )
-        self.sidebar_status.pack(anchor="w", pady=(0, 5))
+        self.sidebar_status.pack(anchor="w", padx=10, pady=(8, 0))
 
         self.sidebar_bar = ctk.CTkProgressBar(
             sf, height=3, corner_radius=2,
             fg_color=COLOR_TRACK, progress_color=COLOR_LOW
         )
-        self.sidebar_bar.pack(fill="x", pady=(0, 3))
+        self.sidebar_bar.pack(fill="x", padx=10, pady=(4, 3))
         self.sidebar_bar.set(0)
 
         self.sidebar_risk_label = ctk.CTkLabel(
             sf, text="Risk: —", font=ctk.CTkFont(size=11, weight="bold"),
             text_color=COLOR_TEXT
         )
-        self.sidebar_risk_label.pack(anchor="w", pady=(0, 2))
+        self.sidebar_risk_label.pack(anchor="w", padx=10, pady=(0, 2))
 
         self.sidebar_bg_label = ctk.CTkLabel(
             sf, text="", font=ctk.CTkFont(size=10),
             text_color=COLOR_TEXT2
         )
-        self.sidebar_bg_label.pack(anchor="w")
+        self.sidebar_bg_label.pack(anchor="w", padx=10, pady=(0, 8))
 
     # ================================================================
     # MAIN AREA
@@ -442,6 +464,43 @@ class DepremGUI(ctk.CTk):
             return _tk.Misc.after(self, ms, func)
         except Exception:
             return None
+
+    def _maybe_backfill(self):
+        """Geçmiş tablolarını doldur; deprem sayısı artmışsa tekrar dene.
+        (Taze kurulumda ilk yenileme boş DB'ye denk gelebilir; bayrak + sayı
+        takibiyle veri gelince tamamlanır.)"""
+        with self._refresh_lock:
+            try:
+                from deprem_izleme.db import get_stats
+                from deprem_izleme.aggregation import backfill_history
+                nq = 0
+                try:
+                    nq = int(get_stats(region="marmara").get("count", 0) or 0)
+                except Exception:
+                    pass
+                if self._history_backfilled and nq == getattr(self, "_history_bf_count", -1):
+                    return
+                backfill_history(weeks=26, months=12, region="marmara")
+                self._history_backfilled = True
+                self._history_bf_count = nq
+            except Exception as ex:
+                try:
+                    from deprem_izleme.errors import log_error
+                    log_error(ex, "backfill")
+                except Exception:
+                    pass
+
+    def _early_backfill(self):
+        """Açılışta ağ beklemeden geçmişi doldur (yenileme çalışanını beklemez)."""
+        self._maybe_backfill()
+
+    def _refresh_if_stale(self):
+        """Zamanlayıcı tetiklemeli yenileme: ağ takılsa bile ekran tazelenir."""
+        try:
+            if not self._refreshed_once:
+                self.refresh_all()
+        except Exception:
+            pass
 
     def _on_map_window(self, _e=None):
         """Pencere geri açıldığında boyamayı tazele (siyah flaşları azaltır)."""
@@ -496,18 +555,39 @@ class DepremGUI(ctk.CTk):
 
     def switch_page(self, name):
         if name not in self.pages and name in getattr(self, "_page_builders", {}):
+            if name in getattr(self, "_building_pages", set()):
+                return
+            self._building_pages.add(name)
+            had = name in self.pages
             try:
                 self._page_builders[name]()
-            except Exception:
+            except Exception as ex:
+                try:
+                    from deprem_izleme.errors import log_error
+                    log_error(ex, f"sayfa kurulumu: {name}")
+                except Exception:
+                    pass
+                if not had:
+                    self.pages.pop(name, None)
                 return
+            finally:
+                try:
+                    self._building_pages.discard(name)
+                except Exception:
+                    pass
         if name not in self.pages:
             return  # sayfa henüz kurulmadıysa sessizce yoksay
         self._show_only(name)
         for key, btn in self.nav_btns.items():
+            ind = self.nav_indicators.get(key)
             if key == name:
                 btn.configure(fg_color=COLOR_ACCENT_DEEP, text_color="#FFFFFF")
+                if ind is not None:
+                    ind.configure(fg_color=COLOR_ACCENT)
             else:
                 btn.configure(fg_color="transparent", text_color=COLOR_TEXT)
+                if ind is not None:
+                    ind.configure(fg_color="transparent")
         try:
             self._fast_scroll(self.pages[name])
         except Exception:
@@ -1471,6 +1551,10 @@ class DepremGUI(ctk.CTk):
         for w in self.chart_canvas_frame.winfo_children():
             w.destroy()
         canvas = FigureCanvasTkAgg(fig, master=self.chart_canvas_frame)
+        try:
+            canvas.get_tk_widget().configure(highlightthickness=0, bd=0)
+        except Exception:
+            pass
         canvas.get_tk_widget().pack(fill="both", expand=True)
         canvas.draw()
         self.chart_canvas = canvas
@@ -1480,6 +1564,10 @@ class DepremGUI(ctk.CTk):
                 w.destroy()
             try:
                 c2 = FigureCanvasTkAgg(fig2, master=frame)
+                try:
+                    c2.get_tk_widget().configure(highlightthickness=0, bd=0)
+                except Exception:
+                    pass
                 c2.get_tk_widget().pack(fill="both", expand=True)
                 c2.draw()
             except Exception:
@@ -1553,6 +1641,10 @@ class DepremGUI(ctk.CTk):
         from deprem_izleme.charts import build_fullscreen_figure
         fig = build_fullscreen_figure(days=self.chart_days)
         canvas = FigureCanvasTkAgg(fig, master=parent_frame)
+        try:
+            canvas.get_tk_widget().configure(highlightthickness=0, bd=0)
+        except Exception:
+            pass
         canvas.get_tk_widget().pack(fill="both", expand=True)
         canvas.draw()
 
@@ -2050,14 +2142,9 @@ class DepremGUI(ctk.CTk):
     def refresh_all(self):
         def worker():
             try:
-                # Geçmiş tablolarını bir kez doldur (boş "Geçmiş" sayfası bug'ı)
-                if not getattr(self, "_history_backfilled", False):
-                    try:
-                        from deprem_izleme.aggregation import backfill_history
-                        backfill_history(weeks=26, months=12, region="marmara")
-                    except Exception:
-                        pass
-                    self._history_backfilled = True
+                # Geçmiş tablolarını doldur (veri geldikçe tamamlanır)
+                self._maybe_backfill()
+                self._refreshed_once = True
 
                 days = self.current_time_filter
                 r = get_comprehensive_risk_report(region="marmara")

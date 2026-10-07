@@ -203,6 +203,10 @@ def _attach_canvas(parent_frame, fig):
     """Figürü Tk'ya bağla - SADECE ana thread'den çağır."""
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
     canvas = FigureCanvasTkAgg(fig, master=parent_frame)
+    try:
+        canvas.get_tk_widget().configure(highlightthickness=0, bd=0)
+    except Exception:
+        pass
     canvas.draw()
     return canvas, fig
 

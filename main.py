@@ -158,6 +158,13 @@ def cmd_report(args):
     return output
 
 
+def cmd_backfill(args):
+    """Geçmiş haftalık/aylık tablolarını geriye dönük doldur."""
+    from deprem_izleme.aggregation import backfill_history
+    w, m = backfill_history(weeks=args.weeks, months=args.months, region=args.region)
+    print(f"{w} hafta, {m} ay yazıldı ({args.region}).")
+
+
 def cmd_history(args):
     """Geçmiş istatistikleri göster."""
     if args.period == "weekly":
@@ -264,6 +271,12 @@ def main():
     p_hist.add_argument("--region", default="marmara")
     p_hist.add_argument("--limit", type=int, default=24, help="Kayıt sayısı")
 
+    # backfill
+    p_bf = subparsers.add_parser("backfill", help="Geçmiş tabloları doldur")
+    p_bf.add_argument("--region", default="marmara")
+    p_bf.add_argument("--weeks", type=int, default=26)
+    p_bf.add_argument("--months", type=int, default=12)
+
     # alert
     p_alert = subparsers.add_parser("alert", help="Alarm/uyarı")
     p_alert.add_argument("--region", default="marmara")
@@ -284,6 +297,8 @@ def main():
         cmd_report(args)
     elif args.command == "history":
         cmd_history(args)
+    elif args.command == "backfill":
+        cmd_backfill(args)
     elif args.command == "alert":
         cmd_alert(args)
     elif args.command == "telegram-setup":
