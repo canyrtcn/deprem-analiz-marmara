@@ -1,0 +1,28 @@
+# Build çıktıları
+build/
+dist/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Uygulama verisi (yerelde üretilir, depoya girmez)
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.db-journal
+data/settings.json
+data/notifications.jsonl
+
+# Ekran görüntüleri ve geçici dosyalar
+ss*.png
+assets/_*.png
+assets/_*.txt
+*.log
+
+# PyInstaller spec (her build'de mutlak yollarla yeniden üretilir; build.py esastır)
+deprem-izleme.spec

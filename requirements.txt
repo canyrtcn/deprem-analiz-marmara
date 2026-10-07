@@ -1,0 +1,8 @@
+requests>=2.28.0
+customtkinter>=5.2.0
+matplotlib>=3.7.0
+numpy>=1.24.0
+pillow>=10.0.0
+# İsteğe bağlı (yoksa uygulama yine çalışır):
+# folium>=0.14.0          # tarayıcıda interaktif harita (Harita sayfası gömülü
+# tkintermapview>=1.29    # canvas harita kullandığı için zorunlu değil)
