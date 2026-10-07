@@ -610,7 +610,7 @@ class DepremGUI(ctk.CTk):
         self.risk_gauge.pack(fill="x", pady=(5, 2))
 
         gfs = ctk.CTkFrame(gauge_frame, fg_color="transparent")
-        gfs.pack(fill="x")
+        gfs.pack(fill="x", pady=(8, 0))
         self.risk_gauge_label = ctk.CTkLabel(
             gfs, text="Risk: 0.00 (HESAPLANIYOR)",
             font=ctk.CTkFont(size=15, weight="bold"), text_color=COLOR_TEXT
@@ -619,10 +619,10 @@ class DepremGUI(ctk.CTk):
         self.risk_chip = ctk.CTkFrame(gfs, fg_color=COLOR_LOW, corner_radius=10)
         self.risk_chip.pack(side="right", padx=(8, 0))
         self.risk_gauge_level = ctk.CTkLabel(
-            self.risk_chip, text="—", font=ctk.CTkFont(size=12, weight="bold"),
+            self.risk_chip, text="—", font=ctk.CTkFont(size=11, weight="bold"),
             text_color="#FFFFFF"
         )
-        self.risk_gauge_level.pack(padx=12, pady=3)
+        self.risk_gauge_level.pack(padx=10, pady=2)
 
         # "Şu an ne diyor?" - sade dil özeti
         self.now_label = ctk.CTkLabel(p, text="Veriler yükleniyor...",
