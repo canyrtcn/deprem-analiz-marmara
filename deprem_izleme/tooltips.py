@@ -195,7 +195,7 @@ TOOLTIPS = {
 }
 
 
-_popover = {"win": None, "seq": 0, "owner": None, "suppress": None}
+_popover = {"win": None, "seq": 0, "owner": None, "opened_at": 0.0}
 
 
 def _close_popover(_ev=None, _seq=None, _why="?"):
@@ -252,10 +252,7 @@ def _install_global_dismiss():
                     if w == pop:
                         return  # baloncuk içine tıklandı
                     if ow is not None and w == ow:
-                        # Kendi ? düğmesine tekrar basıldı: kapat ve yeniden açmayı bastır (toggle)
-                        _popover["suppress"] = ow
-                        _close_popover(_why="toggle-press")
-                        return
+                        return  # kendi ? düğmesi: kararı command verir (sıra bağımsız)
                     try:
                         w = w.master
                     except Exception:
@@ -275,16 +272,23 @@ def show_tooltip_popover(widget, key):
     """Düğmenin yanında açılan kompakt açıklama baloncuğu (penceresiz)."""
     import customtkinter as ctk
     try:
-        if _popover.get("suppress") is widget:
-            _popover["suppress"] = None
-            _close_popover(_why="toggle-release")
-            return  # toggle: aynı düğmeye ikinci basış kapatır
-        _popover["suppress"] = None
-        _close_popover()
+        import time as _time
+        # Aynı düğmeye hızlı ikinci ateş (çift command) balonu öldürmesin:
+        # 0.3 sn içindeki tekrar, açık balonu korur.
+        if (_popover.get("win") is not None
+                and _popover.get("owner") is widget
+                and (_time.monotonic() - _popover.get("opened_at", 0.0)) < 0.3):
+            return
+        # Açık balon + aynı düğme (bilinçli toggle): kapat, dön.
+        if _popover.get("win") is not None and _popover.get("owner") is widget:
+            _close_popover(_why="toggle")
+            return
+        _close_popover(_why="replace")
         _install_global_dismiss()
         _popover["seq"] = _popover.get("seq", 0) + 1
         _seq = _popover["seq"]
         _popover["owner"] = widget
+        _popover["opened_at"] = _time.monotonic()
         _open_popover_window(widget, key, _seq)
         try:
             from deprem_izleme.errors import diag
