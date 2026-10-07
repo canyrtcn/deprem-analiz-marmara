@@ -358,7 +358,6 @@ class DepremGUI(ctk.CTk):
                      text_color=COLOR_ACCENT).pack(anchor="w", pady=(2, 14))
 
         self.nav_btns = {}
-        self.nav_indicators = {}
         groups = [
             ("İzleme", [("ana-sayfa", "⌂  Ana Sayfa"),
                         ("harita", "◉  Harita"),
@@ -376,55 +375,48 @@ class DepremGUI(ctk.CTk):
                          text_color=COLOR_TEXT2).pack(anchor="w", padx=18,
                                                       pady=(14 if gi else 4, 2))
             for key, label in items:
-                row = ctk.CTkFrame(sb, fg_color="transparent")
-                row.pack(fill="x", padx=8, pady=1)
-                ind = ctk.CTkFrame(row, fg_color="transparent", width=3, corner_radius=2)
-                ind.pack(side="left", fill="y", padx=(2, 0))
-                ind.pack_propagate(False)
                 btn = ctk.CTkButton(
-                    row, text=label,
+                    sb, text=label,
                     font=ctk.CTkFont(size=12),
                     fg_color="transparent", hover_color=COLOR_NAV_HOVER,
                     text_color=COLOR_TEXT, anchor="w",
                     height=32, corner_radius=8, border_width=0,
                     command=lambda k=key: self.switch_page(k)
                 )
-                btn.pack(side="left", fill="x", expand=True)
+                btn.pack(fill="x", padx=8, pady=1)
                 self.nav_btns[key] = btn
-                self.nav_indicators[key] = ind
 
         # Sidebar footer
         div2 = ctk.CTkFrame(sb, fg_color=COLOR_CARD_BORDER, height=1, corner_radius=0)
         div2.pack(fill="x", padx=18, pady=(10, 8))
-        sf = ctk.CTkFrame(sb, fg_color=COLOR_CARD_BG, corner_radius=8,
-                          border_width=1, border_color=COLOR_CARD_BORDER)
-        sf.pack(fill="x", padx=12, pady=(0, 12))
+        sf = ctk.CTkFrame(sb, fg_color="transparent")
+        sf.pack(fill="x", padx=18, pady=(0, 15))
         sf.grid_columnconfigure(0, weight=1)
 
         self.sidebar_status = ctk.CTkLabel(
             sf, text="Son güncelleme: —",
             font=ctk.CTkFont(size=10), text_color=COLOR_TEXT
         )
-        self.sidebar_status.pack(anchor="w", padx=10, pady=(8, 0))
+        self.sidebar_status.pack(anchor="w", pady=(0, 5))
 
         self.sidebar_bar = ctk.CTkProgressBar(
             sf, height=3, corner_radius=2,
             fg_color=COLOR_TRACK, progress_color=COLOR_LOW
         )
-        self.sidebar_bar.pack(fill="x", padx=10, pady=(4, 3))
+        self.sidebar_bar.pack(fill="x", pady=(0, 3))
         self.sidebar_bar.set(0)
 
         self.sidebar_risk_label = ctk.CTkLabel(
             sf, text="Risk: —", font=ctk.CTkFont(size=11, weight="bold"),
             text_color=COLOR_TEXT
         )
-        self.sidebar_risk_label.pack(anchor="w", padx=10, pady=(0, 2))
+        self.sidebar_risk_label.pack(anchor="w", pady=(0, 2))
 
         self.sidebar_bg_label = ctk.CTkLabel(
             sf, text="", font=ctk.CTkFont(size=10),
             text_color=COLOR_TEXT2
         )
-        self.sidebar_bg_label.pack(anchor="w", padx=10, pady=(0, 8))
+        self.sidebar_bg_label.pack(anchor="w")
 
     # ================================================================
     # MAIN AREA
@@ -579,15 +571,10 @@ class DepremGUI(ctk.CTk):
             return  # sayfa henüz kurulmadıysa sessizce yoksay
         self._show_only(name)
         for key, btn in self.nav_btns.items():
-            ind = self.nav_indicators.get(key)
             if key == name:
                 btn.configure(fg_color=COLOR_ACCENT_DEEP, text_color="#FFFFFF")
-                if ind is not None:
-                    ind.configure(fg_color=COLOR_ACCENT)
             else:
                 btn.configure(fg_color="transparent", text_color=COLOR_TEXT)
-                if ind is not None:
-                    ind.configure(fg_color="transparent")
         try:
             self._fast_scroll(self.pages[name])
         except Exception:
