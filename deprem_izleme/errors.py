@@ -12,6 +12,20 @@ def _log_path():
         return "deprem_error.log"
 
 
+def diag(msg):
+    """Yaşam döngüsü izi (data/diag.log) - sessiz kalma sorunlarında teşhis için."""
+    try:
+        from deprem_izleme.config import DATA_DIR
+        p = os.path.join(DATA_DIR, "diag.log")
+    except Exception:
+        p = "deprem_diag.log"
+    try:
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now().isoformat(timespec='seconds')}] {msg}\n")
+    except Exception:
+        pass
+
+
 def log_error(ex, context=""):
     """Hatayi dosyaya ekle, konsola da yaz (exe'de konsol yoktur)."""
     try:

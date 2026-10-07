@@ -195,10 +195,13 @@ TOOLTIPS = {
 }
 
 
-_popover = {"win": None, "bind": None}
+_popover = {"win": None, "seq": 0, "owner": None, "suppress": None}
 
 
-def _close_popover(_ev=None):
+def _close_popover(_ev=None, _seq=None):
+    # Eski zamanlayıcı yeni baloncuğu öldürmesin (seq kimlik kontrolü)
+    if _seq is not None and _seq != _popover.get("seq"):
+        return
     w = _popover.get("win")
     _popover["win"] = None
     try:
@@ -238,9 +241,15 @@ def _install_global_dismiss():
                 if pop is None:
                     return
                 w = ev.widget if ev is not None else None
+                ow = _popover.get("owner")
                 while w is not None:
                     if w == pop:
                         return  # baloncuk içine tıklandı
+                    if ow is not None and w == ow:
+                        # Kendi ? düğmesine tekrar basıldı: kapat ve yeniden açmayı bastır (toggle)
+                        _popover["suppress"] = ow
+                        _close_popover()
+                        return
                     try:
                         w = w.master
                     except Exception:
@@ -259,8 +268,16 @@ def _install_global_dismiss():
 def show_tooltip_popover(widget, key):
     """Düğmenin yanında açılan kompakt açıklama baloncuğu (penceresiz)."""
     import customtkinter as ctk
+    if _popover.get("suppress") is widget:
+        _popover["suppress"] = None
+        _close_popover()
+        return  # toggle: aynı düğmeye ikinci basış kapatır
+    _popover["suppress"] = None
     _close_popover()
     _install_global_dismiss()
+    _popover["seq"] = _popover.get("seq", 0) + 1
+    _seq = _popover["seq"]
+    _popover["owner"] = widget
     text = TOOLTIPS.get(key, f"Açıklama bulunamadı: {key}")
     first, _, rest = text.partition("\n")
 
@@ -303,7 +320,7 @@ def show_tooltip_popover(widget, key):
         tip.bind("<FocusOut>", _away)
         tip.bind("<Escape>", _away)
         tip.bind("<Button-1>", _away)
-        tip.after(12000, _close_popover)
+        tip.after(12000, lambda: _close_popover(_seq=_seq))
     except Exception:
         pass
 

@@ -7,6 +7,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import threading
+import queue
 import json
 import time
 import math
@@ -156,6 +157,7 @@ class DepremGUI(ctk.CTk):
         self.minsize(1100, 700)
         self._alive = True
         self._refresh_lock = threading.Lock()
+        self._ui_queue = queue.Queue()
         self._history_backfilled = False
         self._refreshed_once = False
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -228,8 +230,14 @@ class DepremGUI(ctk.CTk):
         self._safe_after(1500, self._startup_fetch_once)
         self._safe_after(2500, self._prebuild_pages)
         self._safe_after(15000, self._refresh_if_stale)
+        self._safe_after(250, self._drain_ui_queue)
         try:
             threading.Thread(target=self._early_backfill, daemon=True).start()
+        except Exception:
+            pass
+        try:
+            from deprem_izleme.errors import diag
+            diag("init tamam")
         except Exception:
             pass
 
@@ -313,14 +321,19 @@ class DepremGUI(ctk.CTk):
 
     def _startup_fetch_worker(self):
         try:
+            try:
+                from deprem_izleme.errors import diag
+                diag("fetch worker basladi")
+            except Exception:
+                pass
             c = fetch_and_store(days_back=3, min_magnitude=0.0)
             self._bump_api_use()
-            self._safe_after(0, self.refresh_all)
-            self._safe_after(100, lambda: self.dash_status.configure(
+            self._post_ui( self.refresh_all)
+            self._post_ui(lambda: self.dash_status.configure(
                 text=f"✅ Güncel: {c} yeni deprem" if c else "✅ Veriler güncel",
                 text_color=COLOR_SUCCESS))
         except Exception as e:
-            self._safe_after(0, lambda: self.dash_status.configure(
+            self._post_ui( lambda: self.dash_status.configure(
                 text=f"Çekme hatası (kayıtlı veri gösteriliyor): {friendly_error(e)}",
                 text_color=COLOR_DANGER))
 
@@ -435,8 +448,9 @@ class DepremGUI(ctk.CTk):
         return f
 
     def _show_only(self, name):
-        # grid_remove YOK: sayfalar üst üste durur, sadece öne alınır.
-        # Böylece menü geçişlerinde yeniden yerleşim titremesi olmaz.
+        # Tek görünür sayfa kuralı: hedef öne alınır, diğerleri grid'den
+        # çıkarılır. (Hepsini mapped bırakmak sayfa yığınlaşmasına ve
+        # "tıklıyorum açılmıyor" hissine yol açıyordu.)
         for pname, frame in self.pages.items():
             if pname == name:
                 try:
@@ -445,6 +459,11 @@ class DepremGUI(ctk.CTk):
                     pass
                 try:
                     frame.tkraise()
+                except Exception:
+                    pass
+            else:
+                try:
+                    frame.grid_remove()
                 except Exception:
                     pass
 
@@ -456,6 +475,39 @@ class DepremGUI(ctk.CTk):
             return _tk.Misc.after(self, ms, func)
         except Exception:
             return None
+
+    def _post_ui(self, func):
+        """Worker thread'dan ana thread'e güvenli iş gönder (Tk thread-güvenli
+        değildir; doğrudan after/configure çağrısı yarışta kaybolabilir)."""
+        try:
+            self._ui_queue.put(func)
+        except Exception:
+            pass
+
+    def _drain_ui_queue(self):
+        """Ana thread yoklayıcısı: kuyruktaki UI işlerini sırayla çalıştır."""
+        try:
+            while True:
+                try:
+                    func = self._ui_queue.get_nowait()
+                except queue.Empty:
+                    break
+                try:
+                    func()
+                except Exception as ex:
+                    try:
+                        from deprem_izleme.errors import log_error
+                        log_error(ex, "ui_queue")
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        finally:
+            try:
+                if getattr(self, "_alive", False):
+                    self._safe_after(250, self._drain_ui_queue)
+            except Exception:
+                pass
 
     def _maybe_backfill(self):
         """Geçmiş tablolarını doldur; deprem sayısı artmışsa tekrar dene.
@@ -472,9 +524,14 @@ class DepremGUI(ctk.CTk):
                     pass
                 if self._history_backfilled and nq == getattr(self, "_history_bf_count", -1):
                     return
-                backfill_history(weeks=26, months=12, region="marmara")
+                w, m = backfill_history(weeks=26, months=12, region="marmara")
                 self._history_backfilled = True
                 self._history_bf_count = nq
+                try:
+                    from deprem_izleme.errors import diag
+                    diag(f"backfill tamam: {nq} deprem -> {w} hafta, {m} ay")
+                except Exception:
+                    pass
             except Exception as ex:
                 try:
                     from deprem_izleme.errors import log_error
@@ -545,14 +602,70 @@ class DepremGUI(ctk.CTk):
                 pass
         _walk(root)
 
+    def _darken_hex(self, hexcolor, f=0.82):
+        """Düz renk butonlar için koyu hover tonu üret."""
+        try:
+            h = str(hexcolor).lstrip("#")
+            if len(h) != 6:
+                return hexcolor
+            r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+            return f"#{int(r * f):02X}{int(g * f):02X}{int(b * f):02X}"
+        except Exception:
+            return hexcolor
+
+    def _polish_button_hovers(self, root):
+        """Hover rengi atanmamış butonlara tema uyumlu hover ver (tek seferlik)."""
+        try:
+            import customtkinter as ctk
+            for w in root.winfo_children():
+                try:
+                    self._polish_button_hovers(w)
+                except Exception:
+                    pass
+                try:
+                    if isinstance(w, ctk.CTkButton) and not getattr(w, "_hover_polished", False):
+                        fg = w.cget("fg_color")
+                        if isinstance(fg, (tuple, list)):
+                            w._hover_polished = True
+                            continue  # temalı renk: varsayılan hover kalsın
+                        if fg == "transparent":
+                            w.configure(hover_color=COLOR_NAV_HOVER)
+                        elif isinstance(fg, str) and fg.startswith("#"):
+                            w.configure(hover_color=self._darken_hex(fg))
+                        w._hover_polished = True
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     def switch_page(self, name):
+        # Anında geri bildirim: seçili menüyü önce işaretle (kurulum sürse bile
+        # tıklamanın alındığı belli olur).
+        try:
+            for key, btn in self.nav_btns.items():
+                if key == name:
+                    btn.configure(fg_color=COLOR_ACCENT_DEEP, text_color="#FFFFFF")
+                else:
+                    btn.configure(fg_color="transparent", text_color=COLOR_TEXT)
+        except Exception:
+            pass
         if name not in self.pages and name in getattr(self, "_page_builders", {}):
             if name in getattr(self, "_building_pages", set()):
                 return
             self._building_pages.add(name)
             had = name in self.pages
             try:
+                import time as _t
+                _t0 = _t.perf_counter()
                 self._page_builders[name]()
+                _dur = _t.perf_counter() - _t0
+                if _dur > 1.5:
+                    try:
+                        from deprem_izleme.errors import log_error
+                        log_error(RuntimeError(f"yavas sayfa kurulumu: {name} {_dur:.1f}sn"),
+                                  "switch_page")
+                    except Exception:
+                        pass
             except Exception as ex:
                 try:
                     from deprem_izleme.errors import log_error
@@ -570,16 +683,22 @@ class DepremGUI(ctk.CTk):
         if name not in self.pages:
             return  # sayfa henüz kurulmadıysa sessizce yoksay
         self._show_only(name)
-        for key, btn in self.nav_btns.items():
-            if key == name:
-                btn.configure(fg_color=COLOR_ACCENT_DEEP, text_color="#FFFFFF")
-            else:
-                btn.configure(fg_color="transparent", text_color=COLOR_TEXT)
         try:
             self._fast_scroll(self.pages[name])
         except Exception:
             pass
-        self._on_page_shown(name)
+        try:
+            self._polish_button_hovers(self)
+        except Exception:
+            pass
+        try:
+            self._on_page_shown(name)
+        except Exception as ex:
+            try:
+                from deprem_izleme.errors import log_error
+                log_error(ex, f"sayfa gosterimi: {name}")
+            except Exception:
+                pass
 
     # ================================================================
     # BUILD ALL PAGES
@@ -1109,7 +1228,7 @@ class DepremGUI(ctk.CTk):
             ok.append(f"KOERI: {len(kq)}")
         except Exception as e:
             errs.append(f"KOERI: {e}")
-        self._safe_after(0, lambda: self._apply_map_live(ok, errs))
+        self._post_ui( lambda: self._apply_map_live(ok, errs))
 
     def _apply_map_live(self, ok, errs):
         self._sync_map_db_layer()
@@ -1525,9 +1644,9 @@ class DepremGUI(ctk.CTk):
 
             # Canvas bağlama ANA THREAD'de olmalı (Tk thread-güvenli değil)
             dd = days
-            self._safe_after(0, lambda: self._attach_grafikler_chart(fig, figs2, nq, dd))
+            self._post_ui( lambda: self._attach_grafikler_chart(fig, figs2, nq, dd))
         except Exception as e:
-            self._safe_after(0, lambda: self.chart_status.configure(
+            self._post_ui( lambda: self.chart_status.configure(
                 text=f"Hata: {e}", text_color=COLOR_DANGER))
             import traceback
             traceback.print_exc()
@@ -1668,9 +1787,9 @@ class DepremGUI(ctk.CTk):
         try:
             from deprem_izleme.news_fetcher import fetch_news
             news = fetch_news(max_items=30)
-            self._safe_after(0, lambda: self._display_news(news))
+            self._post_ui( lambda: self._display_news(news))
         except Exception as e:
-            self._safe_after(0, lambda: self.news_status.configure(
+            self._post_ui( lambda: self.news_status.configure(
                 text=f"Hata: {e}", text_color=COLOR_DANGER))
 
     def _display_news(self, news):
@@ -2073,14 +2192,14 @@ class DepremGUI(ctk.CTk):
                         except Exception:
                             pass
 
-                        self._safe_after(0, self._update_bg_ui)
+                        self._post_ui( self._update_bg_ui)
                     except Exception as e:
-                        self._safe_after(0, lambda: self.sidebar_bg_label.configure(
+                        self._post_ui( lambda: self.sidebar_bg_label.configure(
                             text=f"Hata: {e}", text_color=COLOR_DANGER))
                 except Exception:
                     pass
             else:
-                self._safe_after(0, lambda: self.bg_status.configure(
+                self._post_ui( lambda: self.bg_status.configure(
                     text=f"⏸️ Limit doldu ({DAILY_LIMIT}/{DAILY_LIMIT})", text_color=COLOR_WARNING))
 
             # Bekle (interval kadar)
@@ -2119,16 +2238,21 @@ class DepremGUI(ctk.CTk):
             except Exception:
                 pass
             # Veriyi ekrana yansıt
-            self._safe_after(0, self.refresh_all)
-            self._safe_after(100, lambda: self.dash_status.configure(
+            self._post_ui( self.refresh_all)
+            self._post_ui(lambda: self.dash_status.configure(
                 text=f"✅ {c} yeni deprem çekildi + güncellendi", text_color=COLOR_SUCCESS))
         except Exception as e:
-            self._safe_after(0, lambda: self.dash_status.configure(
+            self._post_ui( lambda: self.dash_status.configure(
                 text=friendly_error(e), text_color=COLOR_DANGER))
 
     def refresh_all(self):
         def worker():
             try:
+                try:
+                    from deprem_izleme.errors import diag
+                    diag("refresh worker basladi")
+                except Exception:
+                    pass
                 # Geçmiş tablolarını doldur (veri geldikçe tamamlanır)
                 self._maybe_backfill()
                 self._refreshed_once = True
@@ -2150,11 +2274,11 @@ class DepremGUI(ctk.CTk):
                 rec = get_recurrence_report(mags, bv, av, t_obs_days=t_obs)
                 rec_meta = {"t_obs": round(t_obs, 1), "n": len(mags), "mc": round(bmc, 2)}
 
-                self._safe_after(0, lambda r=r, p=p, eqs=eqs, st=st, wh=wh, mh=mh, rec=rec, bv=bv, av=av, rec_meta=rec_meta:
+                self._post_ui( lambda r=r, p=p, eqs=eqs, st=st, wh=wh, mh=mh, rec=rec, bv=bv, av=av, rec_meta=rec_meta:
                            self._apply_data(r, p, eqs, st, wh, mh, rec, bv, av, rec_meta))
             except Exception as ex:
                 err = friendly_error(ex)
-                self._safe_after(0, lambda e=err: self.dash_status.configure(
+                self._post_ui( lambda e=err: self.dash_status.configure(
                     text=f"Güncelleme hatası: {e}", text_color=COLOR_DANGER))
 
         threading.Thread(target=worker, daemon=True).start()
@@ -2171,17 +2295,29 @@ class DepremGUI(ctk.CTk):
 
         self._update_dashboard()
         # İkincil sayfalar henüz kurulmadıysa (açılış yarışı) atla;
-        # refresh_all tekrar çağrıldığında uygulanır.
-        if "risk-analiz" in self.pages:
-            self._update_risk_analysis()
-            self._update_recurrence()
-            self._update_history()
-            self._update_prediction()
+        # her sayfa kendi guard'ında güncellenir, biri patlarsa diğerleri etkilenmez.
+        for _pg, _fn in (("risk-analiz", self._update_risk_analysis),
+                         ("tekrarlama", self._update_recurrence),
+                         ("gecmis", self._update_history),
+                         ("tahmin", self._update_prediction)):
+            if _pg not in self.pages:
+                continue
+            try:
+                _fn()
+            except Exception as ex:
+                try:
+                    from deprem_izleme.errors import log_error
+                    log_error(ex, f"sayfa guncelleme: {_pg}")
+                except Exception:
+                    pass
+        try:
             if hasattr(self, "embedded_map") and "harita" in self.pages:
                 try:
                     self._sync_map_db_layer()
                 except Exception:
                     pass
+        except Exception:
+            pass
         self._update_charts()
         self._update_sidebar()
 
@@ -2213,10 +2349,10 @@ class DepremGUI(ctk.CTk):
             scope = max(self.current_time_filter, 1)
             fig1 = build_risk_trend_figure(width=4.5, height=2.2, days=scope)
             fig2 = build_daily_count_figure(days=scope, width=4.5, height=2.2)
-            self._safe_after(0, lambda: self._attach_dashboard_charts(fig1, fig2))
+            self._post_ui( lambda: self._attach_dashboard_charts(fig1, fig2))
         except Exception as ex:
             err = str(ex)
-            self._safe_after(0, lambda e=err: self._charts_error(e))
+            self._post_ui( lambda e=err: self._charts_error(e))
 
     def _attach_dashboard_charts(self, fig1, fig2):
         from deprem_izleme.charts import _attach_canvas
@@ -2608,13 +2744,13 @@ class DepremGUI(ctk.CTk):
             c = fetch_and_store(days_back=3, min_magnitude=0.0)
             self._bump_api_use()
             count = self.daily_request_count
-            self._safe_after(0, lambda: self.bg_count_label.configure(
+            self._post_ui( lambda: self.bg_count_label.configure(
                 text=f"Bugün kullanılan: {count}/{DAILY_LIMIT}"))
-            self._safe_after(0, lambda: self.act_status.configure(
+            self._post_ui( lambda: self.act_status.configure(
                 text=f"{c} yeni deprem kaydedildi.", text_color=COLOR_SUCCESS))
-            self._safe_after(300, self.refresh_all)
+            self._post_ui(self.refresh_all)
         except Exception as e:
-            self._safe_after(0, lambda: self.act_status.configure(
+            self._post_ui( lambda: self.act_status.configure(
                 text=f"Hata: {e}", text_color=COLOR_DANGER))
 
     def do_fetch_koeri(self):
@@ -2631,11 +2767,11 @@ class DepremGUI(ctk.CTk):
                     count += 1
                 except Exception:
                     pass
-            self._safe_after(0, lambda: self.act_status.configure(
+            self._post_ui( lambda: self.act_status.configure(
                 text=f"KOERI: {count} yeni deprem kaydedildi.", text_color=COLOR_SUCCESS))
-            self._safe_after(300, self.refresh_all)
+            self._post_ui(self.refresh_all)
         except Exception as e:
-            self._safe_after(0, lambda: self.act_status.configure(
+            self._post_ui( lambda: self.act_status.configure(
                 text=f"KOERI hatası: {e}", text_color=COLOR_DANGER))
 
     def do_alert(self):
@@ -2648,10 +2784,10 @@ class DepremGUI(ctk.CTk):
             pred = EarthquakePredictor(region="marmara").predict_short_term()
             alerted = check_and_alert(r, pred)
             msg = f"Alarm {'GÖNDERİLDİ' if alerted else 'gerek yok'} (risk: {r['composite_risk_score']:.3f})"
-            self._safe_after(0, lambda: self.act_status.configure(
+            self._post_ui( lambda: self.act_status.configure(
                 text=msg, text_color=COLOR_SUCCESS if alerted else COLOR_TEXT))
         except Exception as e:
-            self._safe_after(0, lambda: self.act_status.configure(
+            self._post_ui( lambda: self.act_status.configure(
                 text=f"Hata: {e}", text_color=COLOR_DANGER))
 
     def copy_ai_analysis(self):
@@ -2702,10 +2838,10 @@ class DepremGUI(ctk.CTk):
                              headers=headers, timeout=FETCH_TIMEOUT)
             r.raise_for_status()
             n = r.json().get("count", "?")
-            self._safe_after(0, lambda: self.api_status.configure(
+            self._post_ui( lambda: self.api_status.configure(
                 text=f"Bağlantı OK (örnek kayıt: {n})", text_color=COLOR_SUCCESS))
         except Exception as e:
-            self._safe_after(0, lambda: self.api_status.configure(
+            self._post_ui( lambda: self.api_status.configure(
                 text=f"Hata: {e}", text_color=COLOR_DANGER))
 
     def save_api(self):
