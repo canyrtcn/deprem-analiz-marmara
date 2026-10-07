@@ -68,7 +68,7 @@ COLOR_BTN_SEC_HOVER = "#1F2C44"
 COLOR_ENTRY_BORDER = "#3a3a55"
 COLOR_TRACK = "#1B2740"
 COLOR_NAV_ACTIVE = "#141C2E"
-COLOR_NAV_HOVER = "#2a2a3e"
+COLOR_NAV_HOVER = "#1A2438"
 
 
 def _apply_startup_theme():
@@ -106,7 +106,7 @@ def _apply_startup_theme():
             "COLOR_ENTRY_BORDER": "#CBD5E1",
             "COLOR_TRACK": "#E2E8F0",
             "COLOR_NAV_ACTIVE": "#E2E8F0",
-            "COLOR_NAV_HOVER": "#E8EEF5",
+            "COLOR_NAV_HOVER": "#D8E2EE",
         })
         return True
     except Exception:
@@ -156,6 +156,8 @@ class DepremGUI(ctk.CTk):
         self.minsize(1100, 700)
         self._alive = True
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.configure(fg_color=COLOR_MAIN_BG)
+        self.bind("<Map>", self._on_map_window)
         try:
             import os as _os
             import sys as _sys
@@ -372,6 +374,8 @@ class DepremGUI(ctk.CTk):
                 self.nav_btns[key] = btn
 
         # Sidebar footer
+        div2 = ctk.CTkFrame(sb, fg_color=COLOR_CARD_BORDER, height=1, corner_radius=0)
+        div2.pack(fill="x", padx=18, pady=(10, 8))
         sf = ctk.CTkFrame(sb, fg_color="transparent")
         sf.pack(fill="x", padx=18, pady=(0, 15))
 
@@ -417,11 +421,18 @@ class DepremGUI(ctk.CTk):
         return f
 
     def _show_only(self, name):
+        # grid_remove YOK: sayfalar üst üste durur, sadece öne alınır.
+        # Böylece menü geçişlerinde yeniden yerleşim titremesi olmaz.
         for pname, frame in self.pages.items():
             if pname == name:
-                frame.grid(row=0, column=0, sticky="nsew")
-            else:
-                frame.grid_remove()
+                try:
+                    frame.grid(row=0, column=0, sticky="nsew")
+                except Exception:
+                    pass
+                try:
+                    frame.tkraise()
+                except Exception:
+                    pass
 
     def _safe_after(self, ms, func):
         """Kapanışa dayanıklı after: ölü gövdeye zamanlama yapmaz."""
@@ -431,6 +442,13 @@ class DepremGUI(ctk.CTk):
             return _tk.Misc.after(self, ms, func)
         except Exception:
             return None
+
+    def _on_map_window(self, _e=None):
+        """Pencere geri açıldığında boyamayı tazele (siyah flaşları azaltır)."""
+        try:
+            self.update_idletasks()
+        except Exception:
+            pass
 
     def _on_close(self):
         """Temiz kapanış: arka plan işlerini durdur, sonra kapat."""

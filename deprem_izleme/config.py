@@ -66,7 +66,7 @@ _settings_cache = None
 DEFAULT_SETTINGS = {
     "api_base": API_BASE,
     "api_key": "",
-    "appearance": "dark",
+    "appearance": "light",
     "telegram_token": "",
     "telegram_chat_id": "",
     "telegram_enabled": True,
