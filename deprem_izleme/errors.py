@@ -21,7 +21,7 @@ def diag(msg):
         p = "deprem_diag.log"
     try:
         with open(p, "a", encoding="utf-8") as f:
-            f.write(f"[{datetime.now().isoformat(timespec='seconds')}] {msg}\n")
+            f.write(f"[{datetime.now().isoformat(timespec='milliseconds')}] {msg}\n")
     except Exception:
         pass
 

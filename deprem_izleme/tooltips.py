@@ -198,11 +198,17 @@ TOOLTIPS = {
 _popover = {"win": None, "seq": 0, "owner": None, "suppress": None}
 
 
-def _close_popover(_ev=None, _seq=None):
+def _close_popover(_ev=None, _seq=None, _why="?"):
     # Eski zamanlayıcı yeni baloncuğu öldürmesin (seq kimlik kontrolü)
     if _seq is not None and _seq != _popover.get("seq"):
         return
     w = _popover.get("win")
+    if w is not None:
+        try:
+            from deprem_izleme.errors import diag as _dg
+            _dg(f"popover kapandı: {_why}")
+        except Exception:
+            pass
     _popover["win"] = None
     try:
         if w is not None and w.winfo_exists():
@@ -248,13 +254,13 @@ def _install_global_dismiss():
                     if ow is not None and w == ow:
                         # Kendi ? düğmesine tekrar basıldı: kapat ve yeniden açmayı bastır (toggle)
                         _popover["suppress"] = ow
-                        _close_popover()
+                        _close_popover(_why="toggle-press")
                         return
                     try:
                         w = w.master
                     except Exception:
                         break
-                _close_popover()
+                _close_popover(_why="global-press")
             except Exception:
                 pass
 
@@ -271,7 +277,7 @@ def show_tooltip_popover(widget, key):
     try:
         if _popover.get("suppress") is widget:
             _popover["suppress"] = None
-            _close_popover()
+            _close_popover(_why="toggle-release")
             return  # toggle: aynı düğmeye ikinci basış kapatır
         _popover["suppress"] = None
         _close_popover()
@@ -346,13 +352,13 @@ def _open_popover_window(widget, key, _seq):
         pass
     _popover["win"] = tip
 
-    def _away(_e=None):
-        _close_popover()
+    def _away(_e=None, _why="tip-event"):
+        _close_popover(_why=_why)
     try:
-        tip.bind("<FocusOut>", _away)
-        tip.bind("<Escape>", _away)
-        tip.bind("<Button-1>", _away)
-        tip.after(12000, lambda: _close_popover(_seq=_seq))
+        tip.bind("<FocusOut>", lambda e: _away(e, "focus"))
+        tip.bind("<Escape>", lambda e: _away(e, "escape"))
+        tip.bind("<Button-1>", lambda e: _away(e, "tip-click"))
+        tip.after(12000, lambda: _close_popover(_seq=_seq, _why="timer"))
     except Exception:
         pass
 
