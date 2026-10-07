@@ -300,6 +300,10 @@ def _open_popover_window(widget, key, _seq):
 
     tip = ctk.CTkToplevel()
     tip.overrideredirect(True)
+    try:
+        tip.transient(widget.winfo_toplevel())
+    except Exception:
+        pass
     tip.attributes("-topmost", True)
     tip.withdraw()
     c = _popover_colors()
@@ -315,7 +319,7 @@ def _open_popover_window(widget, key, _seq):
                  anchor="w").pack(anchor="w", padx=12, pady=(0, 10))
 
     tip.update_idletasks()
-    bw, bh = 300, min(tip.winfo_reqheight(), 420)
+    bw, bh = 300, max(60, min(tip.winfo_reqheight(), 420))
     try:
         sw, sh = tip.winfo_screenwidth(), tip.winfo_screenheight()
     except Exception:
@@ -330,8 +334,14 @@ def _open_popover_window(widget, key, _seq):
     tip.geometry(f"{bw}x{bh}+{x}+{y}")
     tip.deiconify()
     try:
+        tip.attributes("-topmost", True)
         tip.lift()
-        tip.update_idletasks()
+        tip.update()
+    except Exception:
+        pass
+    try:
+        from deprem_izleme.errors import diag as _dg
+        _dg(f"popover geometri: {bw}x{bh}+{x}+{y} mapped={tip.winfo_ismapped()}")
     except Exception:
         pass
     _popover["win"] = tip
