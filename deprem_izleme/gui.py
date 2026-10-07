@@ -333,8 +333,9 @@ class DepremGUI(ctk.CTk):
                 text=f"✅ Güncel: {c} yeni deprem" if c else "✅ Veriler güncel",
                 text_color=COLOR_SUCCESS))
         except Exception as e:
-            self._post_ui( lambda: self.dash_status.configure(
-                text=f"Çekme hatası (kayıtlı veri gösteriliyor): {friendly_error(e)}",
+            _emsg = friendly_error(e)
+            self._post_ui(lambda e=_emsg: self.dash_status.configure(
+                text=f"Çekme hatası (kayıtlı veri gösteriliyor): {e}",
                 text_color=COLOR_DANGER))
 
     # ================================================================
@@ -1646,7 +1647,8 @@ class DepremGUI(ctk.CTk):
             dd = days
             self._post_ui( lambda: self._attach_grafikler_chart(fig, figs2, nq, dd))
         except Exception as e:
-            self._post_ui( lambda: self.chart_status.configure(
+            _emsg = str(e)
+            self._post_ui(lambda e=_emsg: self.chart_status.configure(
                 text=f"Hata: {e}", text_color=COLOR_DANGER))
             import traceback
             traceback.print_exc()
@@ -1789,7 +1791,8 @@ class DepremGUI(ctk.CTk):
             news = fetch_news(max_items=30)
             self._post_ui( lambda: self._display_news(news))
         except Exception as e:
-            self._post_ui( lambda: self.news_status.configure(
+            _emsg = str(e)
+            self._post_ui(lambda e=_emsg: self.news_status.configure(
                 text=f"Hata: {e}", text_color=COLOR_DANGER))
 
     def _display_news(self, news):
@@ -2194,7 +2197,8 @@ class DepremGUI(ctk.CTk):
 
                         self._post_ui( self._update_bg_ui)
                     except Exception as e:
-                        self._post_ui( lambda: self.sidebar_bg_label.configure(
+                        _emsg = str(e)
+                        self._post_ui(lambda e=_emsg: self.sidebar_bg_label.configure(
                             text=f"Hata: {e}", text_color=COLOR_DANGER))
                 except Exception:
                     pass
@@ -2242,8 +2246,9 @@ class DepremGUI(ctk.CTk):
             self._post_ui(lambda: self.dash_status.configure(
                 text=f"✅ {c} yeni deprem çekildi + güncellendi", text_color=COLOR_SUCCESS))
         except Exception as e:
-            self._post_ui( lambda: self.dash_status.configure(
-                text=friendly_error(e), text_color=COLOR_DANGER))
+            _emsg = friendly_error(e)
+            self._post_ui(lambda e=_emsg: self.dash_status.configure(
+                text=e, text_color=COLOR_DANGER))
 
     def refresh_all(self):
         def worker():
@@ -2750,7 +2755,8 @@ class DepremGUI(ctk.CTk):
                 text=f"{c} yeni deprem kaydedildi.", text_color=COLOR_SUCCESS))
             self._post_ui(self.refresh_all)
         except Exception as e:
-            self._post_ui( lambda: self.act_status.configure(
+            _emsg = str(e)
+            self._post_ui(lambda e=_emsg: self.act_status.configure(
                 text=f"Hata: {e}", text_color=COLOR_DANGER))
 
     def do_fetch_koeri(self):
@@ -2771,7 +2777,8 @@ class DepremGUI(ctk.CTk):
                 text=f"KOERI: {count} yeni deprem kaydedildi.", text_color=COLOR_SUCCESS))
             self._post_ui(self.refresh_all)
         except Exception as e:
-            self._post_ui( lambda: self.act_status.configure(
+            _emsg = str(e)
+            self._post_ui(lambda e=_emsg: self.act_status.configure(
                 text=f"KOERI hatası: {e}", text_color=COLOR_DANGER))
 
     def do_alert(self):
@@ -2787,7 +2794,8 @@ class DepremGUI(ctk.CTk):
             self._post_ui( lambda: self.act_status.configure(
                 text=msg, text_color=COLOR_SUCCESS if alerted else COLOR_TEXT))
         except Exception as e:
-            self._post_ui( lambda: self.act_status.configure(
+            _emsg = str(e)
+            self._post_ui(lambda e=_emsg: self.act_status.configure(
                 text=f"Hata: {e}", text_color=COLOR_DANGER))
 
     def copy_ai_analysis(self):
@@ -2841,7 +2849,8 @@ class DepremGUI(ctk.CTk):
             self._post_ui( lambda: self.api_status.configure(
                 text=f"Bağlantı OK (örnek kayıt: {n})", text_color=COLOR_SUCCESS))
         except Exception as e:
-            self._post_ui( lambda: self.api_status.configure(
+            _emsg = str(e)
+            self._post_ui(lambda e=_emsg: self.api_status.configure(
                 text=f"Hata: {e}", text_color=COLOR_DANGER))
 
     def save_api(self):
