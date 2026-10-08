@@ -112,9 +112,10 @@ try:
     check("09: staged sentetik sir yakalanir", _scan.returncode == 1,
           _scan.stdout.strip().splitlines()[:2])
     check("09: staged deger acik yazilmaz", "SENTETIK-staged" not in _scan.stdout)
-    _hook = _sp2.run(["sh", ".git/hooks/pre-commit"],
+    _hook = _sp2.run(["sh", "scripts/pre-commit"],
                      capture_output=True, text=True, cwd=REPO2, timeout=120)
-    check("09: hook commit'i engeller", _hook.returncode == 1,
+    check("09: hook betigi staged sirri engeller (kurulu hook ile ayni betik)",
+          _hook.returncode == 1,
           _hook.stdout.strip().splitlines()[-1:] if _hook.stdout.strip() else "")
 finally:
     _sp2.run(["git", "reset", "-q", "_staged_sir_deneme_check.py"], cwd=REPO2, timeout=60)
