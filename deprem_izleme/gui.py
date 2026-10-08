@@ -1996,7 +1996,8 @@ class DepremGUI(ctk.CTk):
                       fg_color=COLOR_ACCENT_DEEP, hover_color="#0D9488",
                       command=self.save_api, width=70, height=28).pack(side="left")
         ctk.CTkLabel(api_inner,
-                     text="Anahtar sismikharita.com/api adresinden alınır; olmadan günde 100 istek.",
+                     text="Anahtar zorunlu değil (günde 100 istek). Anahtar için sismikharita.com/api "
+                          "sayfasından giriş yapın/kayıt olun; anahtar otomatik oluşur.",
                      font=ctk.CTkFont(size=9), text_color=COLOR_TEXT2,
                      wraplength=420, justify="left").grid(row=3, column=0, columnspan=2, sticky="w")
 
@@ -2148,7 +2149,8 @@ class DepremGUI(ctk.CTk):
             "Ana Kaynak: Sismik Harita API (ücretsiz, 100 istek/gün)\n"
             "Ek Kaynak: KOERI Kandilli Rasathanesi\n"
             "API: Anahtar gerekmez, CORS açık, 1000 deprem/istek limiti\n"
-            "Veritabanı: data/ klasöründe SQLite (depremler.db)",
+            "Veritabanı: data/ klasöründe SQLite (depremler.db)\n"
+            "Veri kaynağı: Sismik Harita (sismikharita.com)",
             font=ctk.CTkFont(size=10), text_color=COLOR_TEXT, justify="left"
         ).pack(anchor="w", padx=14, pady=(0, 12))
 
@@ -2264,6 +2266,19 @@ class DepremGUI(ctk.CTk):
             except Exception:
                 pass
 
+    def _center_on_app(self, win, w, h):
+        """Pencereyi uygulama üzerinde ortala (ekrana kelepçeli)."""
+        try:
+            win.update_idletasks()
+            x = self.winfo_x() + (self.winfo_width() - w) // 2
+            y = self.winfo_y() + (self.winfo_height() - h) // 2
+            sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
+            x = max(0, min(x, sw - w - 10))
+            y = max(0, min(y, sh - h - 40))
+            win.geometry(f"{w}x{h}+{x}+{y}")
+        except Exception:
+            pass
+
     def _show_welcome(self, preview=False):
         """Sismik Harita API kurulum rehberi. preview=True: ayarlardan tekrar gösterim."""
         import customtkinter as ctk
@@ -2273,8 +2288,8 @@ class DepremGUI(ctk.CTk):
             save_settings = None
         win = ctk.CTkToplevel(self)
         win.title("Deprem Analiz - Marmara'ya Hoş Geldiniz")
-        win.geometry("560x470")
         win.resizable(False, False)
+        self._center_on_app(win, 560, 480)
         try:
             win.transient(self)
         except Exception:
@@ -2320,19 +2335,19 @@ class DepremGUI(ctk.CTk):
             "1. API anahtarı ZORUNLU DEĞİL — anahtarsız günde 100 istek kullanırsınız.\n\n"
             "2. Anahtarınız varsa: sol menüden Ayarlar → Sismik Harita API bölümüne\n"
             "    yapıştırın → Kaydet → Bağlantıyı Test Et düğmesine basın.\n\n"
-            "3. Anahtarı sismikharita.com adresinden edinebilirsiniz\n"
-            "    (aşağıdaki düğme siteyi tarayıcıda açar)."
+            "3. Anahtar için: sismikharita.com/api sayfasından giriş yapın ya da\n"
+            "    kayıt olun; anahtarınız otomatik oluşur (ücretsiz planda da çalışır)."
         )
         ctk.CTkLabel(steps, text=body, font=ctk.CTkFont(size=12),
                      text_color=COLOR_TEXT, justify="left",
                      anchor="w").pack(anchor="w", padx=16, pady=14)
         btns = ctk.CTkFrame(win, fg_color="transparent")
         btns.pack(fill="x", padx=24, pady=(0, 20))
-        ctk.CTkButton(btns, text="Siteyi Aç", font=ctk.CTkFont(size=11),
+        ctk.CTkButton(btns, text="API Sayfasını Aç", font=ctk.CTkFont(size=11),
                       fg_color=COLOR_BTN_SEC_BG, hover_color=COLOR_BTN_SEC_HOVER,
                       text_color=COLOR_TEXT, border_width=1, border_color=COLOR_CARD_BORDER,
-                      command=lambda: self._open_url("https://sismikharita.com"),
-                      height=32, width=110).pack(side="left", padx=(0, 8))
+                      command=lambda: self._open_url("https://sismikharita.com/api"),
+                      height=32, width=120).pack(side="left", padx=(0, 8))
         ctk.CTkButton(btns, text="Ayarlar'a Git", font=ctk.CTkFont(size=11),
                       fg_color=COLOR_BTN_SEC_BG, hover_color=COLOR_BTN_SEC_HOVER,
                       text_color=COLOR_TEXT, border_width=1, border_color=COLOR_CARD_BORDER,
