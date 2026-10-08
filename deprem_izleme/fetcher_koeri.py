@@ -72,7 +72,9 @@ def parse_koeri_line(line):
         mag = ml or mw or md or 0.0
 
         occurred = f"{tarih.replace('.', '-')} {saat}"
-        event_id = f"koeri_{tarih.replace('.','')}_{saat.replace(':','')}"
+        # Aynı saniyede iki deprem çakışmasın diye koordinat da id'ye girer
+        event_id = (f"koeri_{tarih.replace('.','')}_{saat.replace(':','')}"
+                    f"_{enlem.replace('.','')}_{boylam.replace('.','')}")
         # Deterministik id (Python hash() her çalışta değişir - kullanma)
         det_id = int(hashlib.md5(event_id.encode()).hexdigest()[:8], 16) % (10**9)
 
@@ -102,7 +104,12 @@ def fetch_koeri():
         resp = requests.get(KOERI_URL, timeout=KOERI_TIMEOUT,
                             headers={"User-Agent": "Mozilla/5.0"})
         resp.raise_for_status()
-        text = resp.text
+        # KOERI charset bildirmez; requests ISO-8859-1 varsayar ve Türkçe
+        # karakterler bozulur. Önce UTF-8 dene, olmazsa ISO-8859-9.
+        try:
+            text = resp.content.decode("utf-8")
+        except UnicodeDecodeError:
+            text = resp.content.decode("iso-8859-9", errors="replace")
 
         earthquakes = []
         for line in text.splitlines():

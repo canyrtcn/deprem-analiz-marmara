@@ -63,7 +63,11 @@ def fetch_news(max_items=20):
                 items = re.findall(r'<item>.*?<title>(.*?)</title>.*?<link>(.*?)</link>.*?<pubDate>(.*?)</pubDate>',
                                    resp.text, re.DOTALL)
                 for title, link, pub_date in items[:10]:
-                    title = html.unescape(re.sub(r'<.*?>', '', title)).strip()
+                    # Sıra önemli: önce CDATA (aksi halde tag-temizliği
+                    # ilk '>'ye kadar her şeyi yer), sonra unescape+tag
+                    title = title.replace('<![CDATA[', '').replace(']]>', '')
+                    title = html.unescape(title)
+                    title = re.sub(r'<.*?>', '', title).strip()
                     if title and len(title) > 10:
                         sort_ts, nice_date = _parse_pubdate(pub_date)
                         news.append({

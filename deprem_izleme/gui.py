@@ -1270,8 +1270,17 @@ class DepremGUI(ctk.CTk):
 
     def _open_url(self, url):
         import webbrowser
-        webbrowser.open(url)
-        self.map_status.configure(text=f"✅ {url} açıldı", text_color=COLOR_SUCCESS)
+        # Dış kaynaktan gelen bağlantılar (haber RSS) dahil: yalnızca http/https
+        try:
+            u = (url or "").strip()
+            if u.lower().startswith(("http://", "https://")):
+                webbrowser.open(u)
+                self.map_status.configure(text=f"✅ {u} açıldı", text_color=COLOR_SUCCESS)
+            else:
+                self.map_status.configure(text="⛔ Güvenli olmayan bağlantı engellendi",
+                                           text_color=COLOR_DANGER)
+        except Exception:
+            pass
 
     # ================================================================
     # 5. HISTORY
@@ -1876,7 +1885,7 @@ class DepremGUI(ctk.CTk):
             self.theme_segment.set("Açık" if _lss().get("appearance") == "light" else "Koyu")
         except Exception:
             self.theme_segment.set("Koyu")
-        ctk.CTkLabel(theme_inner, text="Değişiklik yeniden başlatınca uygulanır. Harita ve grafikler koyu kalır.",
+        ctk.CTkLabel(theme_inner, text="Değişiklik yeniden başlatınca uygulanır.",
                      font=ctk.CTkFont(size=9), text_color=COLOR_TEXT2).pack(side="left", padx=(10, 0))
         self.theme_status = ctk.CTkLabel(theme_inner, text="", font=ctk.CTkFont(size=10),
                                         text_color=COLOR_SUCCESS)
@@ -1971,7 +1980,8 @@ class DepremGUI(ctk.CTk):
         ctk.CTkLabel(tel_inner, text="Bot Token:", font=ctk.CTkFont(size=11),
                      text_color=COLOR_TEXT).grid(row=0, column=0, padx=(0, 8), pady=4, sticky="w")
         self.tel_token = ctk.CTkEntry(tel_inner, placeholder_text="...",
-                                       fg_color=COLOR_INSET, border_color=COLOR_ENTRY_BORDER)
+                                      fg_color=COLOR_INSET, border_color=COLOR_ENTRY_BORDER,
+                                      show="•")
         self.tel_token.grid(row=0, column=1, pady=4, sticky="ew")
 
         ctk.CTkLabel(tel_inner, text="Chat ID:", font=ctk.CTkFont(size=11),
@@ -2426,7 +2436,7 @@ class DepremGUI(ctk.CTk):
         if self.earthquakes:
             last = self.earthquakes[0]
             loc = (last.get("location") or "?")[:35]
-            self.status_widgets["Son Deprem"].configure(text=f"M{last.get('magnitude',0):.1f} {loc}")
+            self.status_widgets["Son Deprem"].configure(text=f"M{(last.get('magnitude') or 0):.1f} {loc}")
 
         # Quake list — DÜZGÜN TABLO TASARIMI
         for w in self.quake_scroll.winfo_children():

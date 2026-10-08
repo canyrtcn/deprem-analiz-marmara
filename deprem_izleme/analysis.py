@@ -221,7 +221,7 @@ def build_analysis_prompt(risk_report, prediction, recurrence_data):
     lines += [
         "--- BİLEŞİK RİSK ---",
         f"Risk Skoru: {r['composite_risk_score']:.4f} ({r['risk_level']})",
-        f"Tahmin Uyarı Seviyesi: {p.get('warning_level', '?').upper()}",
+        f"Tahmin Uyarı Seviyesi: { {'red': 'KIRMIZI', 'orange': 'TURUNCU', 'yellow': 'SARI', 'green': 'YEŞİL'}.get(p.get('warning_level', 'green'), p.get('warning_level', '?')) }",
         f"7 günlük M≥4.0 olasılığı: %{p.get('probability', 0)*100:.1f}",
         "",
         "--- GUTENBERG-RICHTER PARAMETRELERİ ---",
@@ -240,7 +240,8 @@ def build_analysis_prompt(risk_report, prediction, recurrence_data):
     else:
         for item in recurrence_data:
             m = item['magnitude']
-            lines.append(f"  M≥{m:.0f}: {item['text']}")
+            mtxt = ('%g' % m)
+            lines.append(f"  M≥{mtxt}: {item['text']}")
 
     lines.extend([
         "",

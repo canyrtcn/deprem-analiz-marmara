@@ -35,29 +35,48 @@ SCALE_BG = "#0A0E15"
 COLOR_NORTH = "#26314A"
 
 
+_DARK_MAP = {
+    "LAND_COLOR": "#0E141F",
+    "SEA_COLOR": "#0D2136",
+    "COAST_LINE": "#49687F",
+    "COAST_CASING": "#04070C",
+    "GRID_COLOR": "#182234",
+    "TEXT_DIM": "#7E8BA0",
+    "TEXT_CITY": "#AEB9CC",
+    "SEL_OUTLINE": "white",
+    "LBL_FG": "white",
+    "LBL_HALO": "black",
+    "WATER_LBL": "#33506B",
+    "CITY_DOT": "#5B6B82",
+    "SCALE_FG": "#E6EBF4",
+    "SCALE_BG": "#0A0E15",
+    "COLOR_NORTH": "#26314A",
+}
+_LIGHT_MAP = {
+    "LAND_COLOR": "#EDF1F6",
+    "SEA_COLOR": "#D8E7F5",
+    "COAST_LINE": "#5B7A99",
+    "COAST_CASING": "#FFFFFF",
+    "GRID_COLOR": "#D3DCE7",
+    "TEXT_DIM": "#5B6B82",
+    "TEXT_CITY": "#334155",
+    "SEL_OUTLINE": "#0F172A",
+    "LBL_FG": "#0F172A",
+    "LBL_HALO": "white",
+    "WATER_LBL": "#7FA3C4",
+    "CITY_DOT": "#64748B",
+    "SCALE_FG": "#0F172A",
+    "SCALE_BG": "#FFFFFF",
+    "COLOR_NORTH": "#94A3B8",
+}
+
+
 def _apply_map_theme():
     try:
         from deprem_izleme.config import load_settings
-        if (load_settings().get("appearance") or "dark") != "light":
-            return
+        light = (load_settings().get("appearance") or "dark") == "light"
         g = globals()
-        g.update({
-            "LAND_COLOR": "#EDF1F6",
-            "SEA_COLOR": "#D8E7F5",
-            "COAST_LINE": "#5B7A99",
-            "COAST_CASING": "#FFFFFF",
-            "GRID_COLOR": "#D3DCE7",
-            "TEXT_DIM": "#5B6B82",
-            "TEXT_CITY": "#334155",
-            "SEL_OUTLINE": "#0F172A",
-            "LBL_FG": "#0F172A",
-            "LBL_HALO": "white",
-            "WATER_LBL": "#7FA3C4",
-            "CITY_DOT": "#64748B",
-            "SCALE_FG": "#0F172A",
-            "SCALE_BG": "#FFFFFF",
-            "COLOR_NORTH": "#94A3B8",
-        })
+        g.update(_LIGHT_MAP if light else _DARK_MAP)
     except Exception:
         pass
 
@@ -175,7 +194,8 @@ class MarmaraMap(tk.Canvas):
             return
         self._press_xy = None
         items = self.find_overlapping(e.x - 13, e.y - 13, e.x + 13, e.y + 13)
-        for it in items:
+        # Üstten alta: görünen (en üstteki) öğe seçilir
+        for it in reversed(items):
             tags = self.gettags(it)
             for t in tags:
                 if t.startswith("q:"):
@@ -239,6 +259,11 @@ class MarmaraMap(tk.Canvas):
 
     # ---------- cizim ----------
     def redraw(self):
+        _apply_map_theme()
+        try:
+            self.configure(bg=LAND_COLOR)
+        except Exception:
+            pass
         w, h, sx, sy = self._scales()
         self.delete("all")
         x0 = self._cx - self._span_x / 2

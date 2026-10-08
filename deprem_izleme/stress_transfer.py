@@ -42,15 +42,19 @@ def coulomb_stress(sxx, syy, szz, sxy, sxz, syz,
     cos_di = math.cos(di); sin_di = math.sin(di)
     cos_ra = math.cos(ra); sin_ra = math.sin(ra)
 
-    # Fay normal vektörü (n)
-    nx = -sin_di * sin_st
-    ny =  sin_di * cos_st
+    # Tutarlı çerçeve: x=doğu, y=kuzey, z=yukarı; strike kuzeyden saat yönünde.
+    # Fay doğrultusu: u_s = (sinφ, cosφ, 0)
+    # Eğim-aşağı (strike'ın sağına eğim): u_d = (cosφ·cosδ, −sinφ·cosδ, −sinδ)
+    # Fay normali: n = u_s × u_d
+    nx = -cos_st * sin_di
+    ny = sin_st * sin_di
     nz = -cos_di
 
-    # Kayma yönü vektörü (s)
-    sx = cos_di * cos_st * cos_ra - sin_st * sin_ra
-    sy = cos_di * sin_st * cos_ra + cos_st * sin_ra
-    sz = sin_di * cos_ra
+    # Kayma yönü: rake strike'tan ölçülür (0 = doğrultu-atımlı, ±90 = eğim-atımlı)
+    # s = cosλ·u_s + sinλ·u_d
+    sx = cos_ra * sin_st + sin_ra * cos_st * cos_di
+    sy = cos_ra * cos_st - sin_ra * sin_st * cos_di
+    sz = -sin_ra * sin_di
 
     # Stress tensör matrisi
     stress = np.array([
@@ -95,8 +99,8 @@ def magnitude_to_slip(mw, area_km2=100):
 
 def magnitude_to_rupture_length(mw):
     """
-    Kırık uzunluğu (km) — Wells & Coppersmith (1994)
-    Strike-slip: log10(L) = 0.74 * Mw - 3.55
+    Yüzey kırık uzunluğu SRL (km) — Wells & Coppersmith (1994), doğrultu-atımlı.
+    log10(SRL) = 0.74 * Mw - 3.55
     """
     return 10 ** (0.74 * mw - 3.55)
 

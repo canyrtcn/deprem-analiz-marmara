@@ -193,11 +193,11 @@ def get_stats(region=None):
     row = conn.execute(f"""
         SELECT
             COUNT(*) AS total,
-            SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) AS son_24h,
-            SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END) AS son_7g,
-            AVG(magnitude) AS avg_mag,
-            MAX(magnitude) AS max_mag,
-            AVG(depth_km) AS avg_depth,
+            COALESCE(SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END), 0) AS son_24h,
+            COALESCE(SUM(CASE WHEN timestamp >= ? THEN 1 ELSE 0 END), 0) AS son_7g,
+            COALESCE(AVG(magnitude), 0) AS avg_mag,
+            COALESCE(MAX(magnitude), 0) AS max_mag,
+            COALESCE(AVG(depth_km), 0) AS avg_depth,
             MIN(timestamp) AS earliest,
             MAX(timestamp) AS latest
         FROM earthquakes {where}

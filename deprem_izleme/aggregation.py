@@ -159,7 +159,9 @@ def calculate_b_value(magnitudes, m_min=None, method="mle"):
         sum_y = sum(log_n)
         sum_xy = sum(x * y for x, y in zip(m_vals, log_n))
         sum_xx = sum(x * x for x in m_vals)
-        b = (n * sum_xy - sum_x * sum_y) / (n * sum_xx - sum_x * sum_x)
+        denom = (n * sum_xx - sum_x * sum_x)
+        # logN = a - b*M olduğundan eğim negatiftir: b = -eğim
+        b = -(n * sum_xy - sum_x * sum_y) / denom if denom != 0 else 1.0
         if b <= 0:
             b = 1.0
 
@@ -722,7 +724,7 @@ def get_comprehensive_risk_report(region="marmara", max_age=45):
         from deprem_izleme.fault_segments import compute_fault_risk_score, compute_bval_trend
         fault_risk, segment_scores = compute_fault_risk_score(quakes)
         bval_trend = compute_bval_trend(quakes)
-    except ImportError:
+    except Exception:
         fault_risk = 0.5
         segment_scores = []
         bval_trend = None
@@ -731,7 +733,7 @@ def get_comprehensive_risk_report(region="marmara", max_age=45):
     try:
         from deprem_izleme.stress_transfer import get_total_stress_transfer
         stress_total, stress_segments, stress_max = get_total_stress_transfer(quakes)
-    except ImportError:
+    except Exception:
         stress_total, stress_segments, stress_max = 0, [], None
 
     # ---- YENİ: Birleşik skor (eski risk + fay riski harmanı) ----

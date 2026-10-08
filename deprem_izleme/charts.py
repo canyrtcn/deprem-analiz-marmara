@@ -22,22 +22,33 @@ CH_TEAL = "#2DD4BF"
 CH_PANEL = "#0B1220"
 
 
+_DARK_CHART = {
+    "COLOR_BG": "#0B1220",
+    "CH_TXT": "#D7DEE9",
+    "CH_DIM": "#7E8BA0",
+    "CH_BRD": "#26314A",
+    "CH_GRID": "#1B2740",
+    "CH_INFO": "#38BDF8",
+    "CH_TEAL": "#2DD4BF",
+    "CH_PANEL": "#0B1220",
+}
+_LIGHT_CHART = {
+    "COLOR_BG": "#FFFFFF",
+    "CH_TXT": "#0F172A",
+    "CH_DIM": "#64748B",
+    "CH_BRD": "#CBD5E1",
+    "CH_GRID": "#E2E8F0",
+    "CH_INFO": "#0284C7",
+    "CH_TEAL": "#0D9488",
+    "CH_PANEL": "#FFFFFF",
+}
+
+
 def _apply_chart_theme():
     try:
         from deprem_izleme.config import load_settings
-        if (load_settings().get("appearance") or "dark") != "light":
-            return
-        g = globals()
-        g.update({
-            "COLOR_BG": "#FFFFFF",
-            "CH_TXT": "#0F172A",
-            "CH_DIM": "#64748B",
-            "CH_BRD": "#CBD5E1",
-            "CH_GRID": "#E2E8F0",
-            "CH_INFO": "#0284C7",
-            "CH_TEAL": "#0D9488",
-            "CH_PANEL": "#FFFFFF",
-        })
+        light = (load_settings().get("appearance") or "dark") == "light"
+        globals().update(_LIGHT_CHART if light else _DARK_CHART)
     except Exception:
         pass
 
@@ -91,6 +102,7 @@ def build_risk_trend_figure(width=4, height=2.5, days=30):
 
     days>14 ise haftalık geçmiş, değilse seçili aralığın günlük verisi.
     """
+    _apply_chart_theme()
     Figure = _mpl()
     fig = Figure(figsize=(width, height), dpi=90, facecolor=COLOR_BG)
     ax = fig.add_subplot(111)
@@ -162,6 +174,7 @@ def build_risk_trend_figure(width=4, height=2.5, days=30):
 
 def build_daily_count_figure(days=30, width=4, height=2.5):
     """Günlük deprem sayısı figürü - Tk gerektirmez."""
+    _apply_chart_theme()
     Figure = _mpl()
     fig = Figure(figsize=(width, height), dpi=90, facecolor=COLOR_BG)
     ax = fig.add_subplot(111)
@@ -225,6 +238,7 @@ def create_daily_count_chart(parent_frame, days=30, width=4, height=2.5):
 
 def build_fmd_figure(width=5.5, height=3.2, days=90):
     """Büyüklük-dağılım (FMD) + Gutenberg-Richter uyumu - Tk gerektirmez."""
+    _apply_chart_theme()
     from deprem_izleme.aggregation import calculate_b_value
     Figure = _mpl()
     fig = Figure(figsize=(width, height), dpi=90, facecolor=COLOR_BG)
@@ -276,6 +290,7 @@ def build_fmd_figure(width=5.5, height=3.2, days=90):
 
 def build_hourly_figure(width=5.5, height=3.2, days=90):
     """Saate göre dağılım - Tk gerektirmez."""
+    _apply_chart_theme()
     from deprem_izleme.analysis import hourly_distribution
     Figure = _mpl()
     fig = Figure(figsize=(width, height), dpi=90, facecolor=COLOR_BG)
@@ -302,6 +317,7 @@ def build_hourly_figure(width=5.5, height=3.2, days=90):
 
 def build_depth_figure(width=5.5, height=3.2, days=90):
     """Derinlik dağılımı - Tk gerektirmez."""
+    _apply_chart_theme()
     from deprem_izleme.analysis import depth_distribution
     Figure = _mpl()
     fig = Figure(figsize=(width, height), dpi=90, facecolor=COLOR_BG)
@@ -328,6 +344,7 @@ def build_depth_figure(width=5.5, height=3.2, days=90):
 
 def build_magtime_figure(width=5.5, height=3.2, days=90):
     """Büyüklük-zaman serisi - Tk gerektirmez."""
+    _apply_chart_theme()
     from deprem_izleme.analysis import magnitude_time
     Figure = _mpl()
     fig = Figure(figsize=(width, height), dpi=90, facecolor=COLOR_BG)
@@ -372,6 +389,7 @@ def _prep_daily(quakes, days):
 
 def build_overview_figure(days=7, width=12, height=6):
     """Grafikler sayfası 4'lü genel görünüm - Tk gerektirmez."""
+    _apply_chart_theme()
     from collections import Counter
     from deprem_izleme.aggregation import daily_risk_light, calculate_b_value, seismic_energy_joules
     Figure = _mpl()
@@ -428,7 +446,9 @@ def build_overview_figure(days=7, width=12, height=6):
     if grouped and len(grouped) >= 2:
         b_vals, blbls = [], []
         for day, mags in grouped:
-            if len(mags) >= 2:
+            # Günlük b için en az 10 olay gerekir; az veride varsayılan 1.0
+            # çizmek yanıltıcı olur, o günler atlanır (dürüst grafik).
+            if len(mags) >= 10:
                 bv, _, _ = calculate_b_value(mags)
                 b_vals.append(bv)
                 blbls.append(day[5:])
@@ -443,7 +463,7 @@ def build_overview_figure(days=7, width=12, height=6):
             ax4.set_ylim(0, max(b_vals) + 0.5 if b_vals else 2)
             for i, v in enumerate(b_vals):
                 ax4.text(i, v + 0.05, f"{v:.2f}", ha="center", fontsize=7, color=CH_TEAL)
-    _style_ax(ax4, "b-değeri Trendi (Günlük)", "", "b")
+    _style_ax(ax4, "b-değeri Trendi (Günlük, gün≥10 olay)", "", "b")
 
     # 4. Enerji
     ax5 = fig.add_subplot(2, 2, 4)
@@ -458,7 +478,7 @@ def build_overview_figure(days=7, width=12, height=6):
         ax5.set_ylabel("GJ", fontsize=9, color=CH_DIM)
         for i, v in enumerate(energies):
             if v > 0:
-                ax5.text(i, v + 0.01, f"{v:.1f}", ha="center", fontsize=7, color="#FBBF24")
+                ax5.text(i, v + 0.01, f"{v:.1f}", ha="center", fontsize=7, color=CH_DIM)
     _style_ax(ax5, "Günlük Sismik Enerji", "", "")
 
     fig.tight_layout(pad=2.5)
@@ -467,6 +487,7 @@ def build_overview_figure(days=7, width=12, height=6):
 
 def build_fullscreen_figure(days=7, width=16, height=9):
     """Tam ekran büyük grafik - Tk gerektirmez."""
+    _apply_chart_theme()
     from deprem_izleme.aggregation import daily_risk_light
     Figure = _mpl()
     fig = Figure(figsize=(width, height), dpi=100, facecolor=COLOR_BG)
