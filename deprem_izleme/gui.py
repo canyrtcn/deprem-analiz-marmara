@@ -2405,7 +2405,10 @@ class DepremGUI(ctk.CTk):
             self.upd_status.configure(text="Denetleniyor...", text_color=COLOR_WARNING)
         except Exception:
             pass
-        threading.Thread(target=self._update_check_worker, args=(True,), daemon=True).start()
+        try:
+            threading.Thread(target=self._update_check_worker, args=(True,), daemon=True).start()
+        except Exception:
+            self._update_check_running = False
 
     def _update_auto_check(self):
         """Açılışta sessiz denetim (ayar açıksa, tekil)."""
@@ -2418,7 +2421,10 @@ class DepremGUI(ctk.CTk):
         except Exception:
             pass
         self._update_check_running = True
-        threading.Thread(target=self._update_check_worker, args=(False,), daemon=True).start()
+        try:
+            threading.Thread(target=self._update_check_worker, args=(False,), daemon=True).start()
+        except Exception:
+            self._update_check_running = False
 
     def _update_check_worker(self, manual):
         try:
