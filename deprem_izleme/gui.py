@@ -1185,12 +1185,20 @@ class DepremGUI(ctk.CTk):
         return out
 
     def _sync_map_db_layer(self):
-        """Uygulama katmanını kayıtlı veriden güncelle (hızlı, eşzamanlı)."""
+        """Uygulama katmanını kayıtlı veriden güncelle (hızlı, eşzamanlı).
+
+        Veri değişmediyse pahalı canvas yeniden çizimi atlanır (büyük
+        kataloglarda her yenilemede donmayı önler).
+        """
         from datetime import datetime as _dt, timedelta as _td
         if not hasattr(self, "embedded_map"):
             return
         dbq = get_earthquakes(since=_dt.now() - _td(days=self.map_days),
                               region="marmara", limit=2000)
+        sig = (len(dbq), dbq[0]["timestamp"] if dbq else 0, self.map_days)
+        if sig == getattr(self, "_map_sync_sig", None):
+            return
+        self._map_sync_sig = sig
         self.map_cache["uygulama"] = dbq
         self.embedded_map.set_data({k: (self._filter_time(v) if k != "uygulama" else v)
                                     for k, v in self.map_cache.items()})
