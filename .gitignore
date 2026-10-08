@@ -25,4 +25,4 @@ assets/_*.txt
 *.log
 
 # PyInstaller spec (her build'de mutlak yollarla yeniden üretilir; build.py esastır)
-deprem-izleme.spec
+*.spec
