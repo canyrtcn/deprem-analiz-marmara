@@ -27,13 +27,13 @@ TOOLTIPS = {
     ),
     "M≥4.0 7g": (
         "M≥4.0 Deprem Olasılığı (7 Gün)\n\n"
-        "Poisson dağılımına göre önümüzdeki 7 gün\n"
-        "içinde M≥4.0 büyüklüğünde bir deprem olma\n"
-        "olasılığı.\n\n"
+        "Poisson dağılımına göre Marmara Bölgesi'nde\n"
+        "önümüzdeki 7 gün içinde M≥4.0 büyüklüğünde\n"
+        "bir deprem olma olasılığı.\n\n"
         "Hesap: P = 1 - exp(-λ·t)\n"
-        "λ = günlük deprem hızı, t = 7 gün\n\n"
-        "Not: Bu istatistiksel bir olasılıktır,\n"
-        "kesin bir tahmin DEĞİLDİR."
+        "λ = 30 günlük katalogdan günlük hız, t = 7 gün\n\n"
+        "Poisson modeli tahmini (kalibre edilmemiş).\n"
+        "Kesin bir tahmin DEĞİLDİR."
     ),
     "Son 24h": (
         "Son 24 Saatteki Deprem Sayısı\n\n"
@@ -185,6 +185,7 @@ TOOLTIPS = {
         "t: zaman aralığı (gün)\n\n"
         "Varsayım: zemin depremler bağımsızdır.\n"
         "Zincirleme tetiklenme bu modelde YOKTUR.\n\n"
+        "Poisson modeli tahmini (kalibre edilmemiş).\n"
         "Kaynak: Gardner & Knopoff (1974)"
     ),
     "Trend & Anomali": (

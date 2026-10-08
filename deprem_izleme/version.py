@@ -6,5 +6,5 @@ Sürüm artırma kuralları (GitHub Release akışı):
 - Büyük değişiklik: 1.0.0 -> 2.0.0 (majör)
 Release etiketi: v + sürüm (örn. v1.0.1).
 """
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 APP_NAME = "Deprem Analiz - Marmara"

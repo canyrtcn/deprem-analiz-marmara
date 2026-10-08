@@ -34,6 +34,10 @@ logger = logging.getLogger(__name__)
 CHECK_TIMEOUT = 10
 DOWNLOAD_TIMEOUT = 60
 
+# SEC-03/04: imzali guvenli guncelleme mekanizmasi (B3) kurulana dek False.
+# download_and_apply bu bayrak kapaliyken indirme/kurma/calistirma yapmaz.
+UPDATER_ENABLED = False
+
 
 def parse_version(s):
     """'v1.2.3' / '1.2.3' -> (1, 2, 3). Bozuksa (0,)."""
@@ -65,10 +69,13 @@ def is_newer(remote, local=APP_VERSION):
 def check_for_updates(timeout=CHECK_TIMEOUT):
     """Son release'i denetle.
 
-    Döner: None (güncel / release yok) veya
+    Döner: None (sürüm bilgisi alınarak güncellik DOĞRULANDI) veya
     {"version": ..., "notes": ..., "url": ..., "page": ...} (yeni sürüm) veya
-    {"error": ...} (ağ/depo erişilemedi - ör. gizli depo + yetkisiz erişim).
-    Hiçbir durumda exception fırlatmaz.
+    {"error": ..., "status": ...} (denetlenemedi).
+    status: "not_found_404" (release yok ya da özel depoya yetkisiz erişim),
+    "forbidden_403" (erişim engeli/rate-limit), "empty" (boş release yanıtı),
+    "network" (bağlantı hatası).
+    Hiçbir durumda exception fırlatmaz. "Güncel" yalnızca None ile söylenir.
     """
     try:
         resp = requests.get(
@@ -78,12 +85,24 @@ def check_for_updates(timeout=CHECK_TIMEOUT):
             timeout=timeout,
         )
         if resp.status_code == 404:
-            # Henüz release yok (veya gizli depoya yetkisiz erişim)
-            return None
+            return {"error": ("Sürüm bilgisi alınamadı (404): henüz release "
+                              "yok ya da özel depoya erişim izni yok."),
+                    "status": "not_found_404"}
+        if resp.status_code == 403:
+            return {"error": ("Sürüm bilgisi alınamadı (403): erişim engellendi "
+                              "veya API hız sınırı aşıldı."),
+                    "status": "forbidden_403"}
         resp.raise_for_status()
-        data = resp.json()
-        tag = data.get("tag_name", "")
-        if not tag or not is_newer(tag):
+        try:
+            data = resp.json()
+        except Exception:
+            return {"error": "Sürüm yanıtı çözümlenemedi (boş/bozuk JSON).",
+                    "status": "empty"}
+        tag = (data or {}).get("tag_name", "")
+        if not tag:
+            return {"error": "Release yanıtı boş (sürüm etiketi yok).",
+                    "status": "empty"}
+        if not is_newer(tag):
             return None
         url = None
         for asset in data.get("assets", []) or []:
@@ -97,8 +116,10 @@ def check_for_updates(timeout=CHECK_TIMEOUT):
             "page": data.get("html_url", ""),
         }
     except Exception as e:
-        logger.info(f"Güncelleme denetimi atlandı: {e}")
-        return {"error": str(e)[:150]}
+        from deprem_izleme.errors import redact
+        logger.info(f"Güncelleme denetimi atlandı: {redact(e)}")
+        return {"error": f"Sürüm denetlenemedi (bağlantı hatası): {redact(e)}"[:150],
+                "status": "network"}
 
 
 def _app_dir():
@@ -204,7 +225,16 @@ def apply_update_bat(staged_dir, on_done=None):
 
 
 def download_and_apply(info, on_quit):
-    """info (check_for_updates çıktısı) -> indir, sahnele, bat + kapat."""
+    """info (check_for_updates çıktısı) -> indir, sahnele, bat + kapat.
+
+    SEC-03/04 KAPALI: imzali guvenli guncelleme mekanizmasi kurulana dek
+    otomatik indirme/kurma/calistirma yolu devre disidir. B3 onaylanmadan
+    bu bayrak acilmayacaktir.
+    """
+    if not UPDATER_ENABLED:
+        return False, ("Otomatik güncelleme güvenlik denetiminde kapalı "
+                       "(B3 bekleniyor). Yeni sürümü GitHub Releases "
+                       "sayfasından elle indirin.")
     url = (info or {}).get("url")
     if not url:
         return False, "Bu sürümde hazır paket yok (elle indirin)."

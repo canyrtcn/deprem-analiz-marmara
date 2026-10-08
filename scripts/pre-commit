@@ -1,0 +1,12 @@
+#!/bin/sh
+# Pre-commit kancasi: staged icerikte gizli bilgi varsa commit'i engeller.
+# Kurulum (yerel, bir kez):  cp scripts/pre-commit .git/hooks/pre-commit
+# (Windows git-bash ile calisir.)
+python scripts/check_secrets.py --staged
+rc=$?
+if [ $rc -ne 0 ]; then
+  echo "commit ENGELLENDI: staged icerikte gizli bilgi deseni var."
+  echo "Degeri kaldirin/sahte degerle degistirin, tekrar stage'leyin."
+  exit 1
+fi
+exit 0

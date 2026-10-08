@@ -6,7 +6,9 @@ import math
 from datetime import datetime, timedelta
 
 from deprem_izleme.db import get_earthquakes
-from deprem_izleme.aggregation import calculate_b_value, seismic_energy_joules
+from deprem_izleme.aggregation import (
+    calculate_b_value, seismic_energy_joules, report_sufficient,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,13 +51,17 @@ def catalog_span_days(earthquakes):
 
 
 def get_recurrence_report(magnitudes, b_value, a_value, region="marmara",
-                          t_obs_days=30.0, quake_count=None):
+                          t_obs_days=30.0, quake_count=None, min_n=10):
     """
     Farklı magnitüdler için tekrarlama aralıkları raporu.
     t_obs_days: oranın dayandığı katalog penceresi (gün).
+    min_n: örneklem kapısı — altındaki örneklemde aralık üretilmez.
     """
-    if not magnitudes or b_value <= 0:
-        return {"error": "Yetersiz veri"}
+    n = len(magnitudes) if magnitudes else 0
+    if quake_count is not None:
+        n = max(n, quake_count)
+    if n < min_n or b_value <= 0:
+        return {"error": f"Yetersiz veri (n={n}<{min_n})"}
 
     levels = [2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0]
     report = []
@@ -172,6 +178,8 @@ def interpret_now(risk_report, prediction):
     lvl = risk_report.get("risk_level", "?")
     if risk_report.get("no_data"):
         lines.append("Veri az olduğu için sayılar gösterge niteliğinde; önce veri çekin.")
+    elif not report_sufficient(risk_report):
+        lines.append("Veri yetersiz olduğu için risk düzeyi belirtilmiyor.")
     elif lvl in ("YÜKSEK", "ÇOK YÜKSEK"):
         lines.append(f"Birleşik risk {lvl} düzeyde — hareketlilik olağanın üzerinde.")
     elif lvl == "ORTA":
@@ -188,10 +196,12 @@ def interpret_now(risk_report, prediction):
     else:
         lines.append("b-değeri normal aralıkta (~1.0).")
     p7 = risk_report["poisson"]["p_m4_7days_pct"]
-    if risk_report["poisson"].get("p_m4_gr_tahmini"):
-        lines.append(f"Önümüzdeki 7 günde M≥4.0 olasılığı %{p7:.1f} (GR modelinden; gözlenen M≥4 yok).")
+    if p7 is None:
+        lines.append("Önümüzdeki 7 günde M≥4.0 olasılığı hesaplanamadı (yetersiz veri).")
+    elif risk_report["poisson"].get("p_m4_gr_tahmini"):
+        lines.append(f"Önümüzdeki 7 günde M≥4.0 olasılığı %{p7:.1f} (GR model senaryosu — Mc doğrulanmış, kalibre edilmemiş).")
     else:
-        lines.append(f"Önümüzdeki 7 günde M≥4.0 olasılığı %{p7:.1f} (istatistiksel tahmin).")
+        lines.append(f"Önümüzdeki 7 günde M≥4.0 olasılığı %{p7:.1f} (Poisson modeli tahmini, kalibre edilmemiş).")
     return lines
 
 
@@ -207,6 +217,41 @@ def build_analysis_prompt(risk_report, prediction, recurrence_data):
     """
     r = risk_report
     p = prediction
+
+    def _wtr(_w):
+        return {"red": "KIRMIZI", "orange": "TURUNCU",
+                "yellow": "SARI", "green": "YEŞİL"}.get(_w, "—")
+
+    def _pct(_x):
+        return f"%{_x:.1f}" if _x is not None else "— (yetersiz veri)"
+
+    _pp = p.get("poisson_probability")
+    _pp = _pp * 100 if _pp is not None else None
+    _ci = p.get("composite_index")
+    _ci_txt = (f"{_ci*100:.0f}/100 (boyutsuz, kalibre edilmemiş)"
+               if _ci is not None else "— (yetersiz veri)")
+    _rp7 = r["poisson"]["p_m4_7days_pct"]
+    _rp30 = r["poisson"]["p_m4_30days_pct"]
+    _emmax = r["gutenberg_richter"]["expected_max_magnitude"]
+    _emmax_txt = f"M{_emmax:.1f}" if _emmax is not None else "— (yetersiz veri)"
+    _asuf = report_sufficient(r)
+    _ascore_txt = (f"{r['composite_risk_score']:.4f} ({r['risk_level']})"
+                   if _asuf else "— (yetersiz veri)")
+    # GR varsayımsal tanı satırı: Mc doğrulanmamışsa başlıkta kullanılmayan
+    # GR hızından P7 hesaplanır, açıkça varsayımsal etiketlenir.
+    _gr_hyp = ""
+    try:
+        _po = r["poisson"]
+        if (_asuf and not _po.get("gr_validated")
+                and (_po.get("lambda_m4_gr_per_day") or 0) > 0):
+            from deprem_izleme.aggregation import poisson_probability as _ppf
+            _hp7 = _ppf(_po["lambda_m4_gr_per_day"], 7.0) * 100
+            _reason = (_po.get("sufficiency", {}).get("validation", {})
+                       .get("reason", "doğrulanmamış"))
+            _gr_hyp = (f"GR senaryosu (VARSAYIMSAL, başlıkta kullanılmadı — "
+                       f"Mc doğrulanmamış: {_reason}): P7=%{_hp7:.1f}")
+    except Exception:
+        _gr_hyp = ""
 
     lines = [
         "=== DEPREM ANALİZ - MARMARA - ANALİZ RAPORU ===",
@@ -225,15 +270,16 @@ def build_analysis_prompt(risk_report, prediction, recurrence_data):
 
     lines += [
         "--- BİLEŞİK RİSK ---",
-        f"Risk Skoru: {r['composite_risk_score']:.4f} ({r['risk_level']})",
-        f"Tahmin Uyarı Seviyesi: { {'red': 'KIRMIZI', 'orange': 'TURUNCU', 'yellow': 'SARI', 'green': 'YEŞİL'}.get(p.get('warning_level', 'green'), p.get('warning_level', '?')) }",
-        f"7 günlük M≥4.0 olasılığı: %{p.get('probability', 0)*100:.1f}",
+        f"Risk Skoru: {_ascore_txt}",
+        f"Tahmin Uyarı Seviyesi: {_wtr(p.get('warning_level'))}",
+        f"Aktivite Göstergesi: {_ci_txt}",
+        f"7 günlük M≥4.0 olasılığı (Poisson): {_pct(_pp)}",
         "",
         "--- GUTENBERG-RICHTER PARAMETRELERİ ---",
         f"b-değeri: {r['gutenberg_richter']['b_value']:.4f}",
         f"a-değeri: {r['gutenberg_richter']['a_value']:.4f}",
         f"b anomali: {r['gutenberg_richter']['b_anomaly']:+.4f}",
-        f"Beklenen Mmax: M{r['gutenberg_richter']['expected_max_magnitude']:.1f}",
+        f"Beklenen Mmax (GR N=1 seviyesi): {_emmax_txt}",
         f"Gözlenen Mmax: M{r['gutenberg_richter']['observed_max_magnitude']:.1f}",
         "",
         "--- TEKRARLAMA ARALIKLARI ---",
@@ -250,11 +296,12 @@ def build_analysis_prompt(risk_report, prediction, recurrence_data):
 
     lines.extend([
         "",
-        "--- POISSON OLASILIKLARI ---",
+        "--- POISSON OLASILIKLARI (model tahmini, kalibre edilmemiş) ---",
         f"λ(M≥3.0): {r['poisson']['lambda_m3_per_day']:.4f} /gün",
         f"λ(M≥4.0): {r['poisson']['lambda_m4_per_day']:.4f} /gün",
-        f"P(M≥4.0) 7 gün: %{r['poisson']['p_m4_7days_pct']:.1f}",
-        f"P(M≥4.0) 30 gün: %{r['poisson']['p_m4_30days_pct']:.1f}",
+        f"P(M≥4.0) 7 gün: {_pct(_rp7)}",
+        f"P(M≥4.0) 30 gün: {_pct(_rp30)}",
+        _gr_hyp,
         "",
         "--- ENERJİ ---",
         f"Toplam sismik enerji: {r['energy']['total_energy_joules']:.2e} J",
@@ -270,7 +317,10 @@ def build_analysis_prompt(risk_report, prediction, recurrence_data):
     ])
 
     for comp_name, comp_val in p.get('components', {}).items():
-        lines.append(f"  {comp_name}: %{comp_val*100:.1f}")
+        if comp_val is None:
+            lines.append(f"  {comp_name}: — (yetersiz veri)")
+        else:
+            lines.append(f"  {comp_name}: %{comp_val*100:.1f}")
 
     lines.extend([
         "",

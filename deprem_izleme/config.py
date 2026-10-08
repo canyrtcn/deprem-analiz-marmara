@@ -113,6 +113,8 @@ def _get_lock():
 DEFAULT_SETTINGS = {
     "api_base": API_BASE,
     "api_key": "",
+    "approved_hosts": [],
+    "dev_mode": False,
     "appearance": "light",
     "welcome_shown": False,
     "auto_update_check": True,
@@ -217,6 +219,101 @@ def clean_api_base(value):
 
 def get_api_endpoint():
     return clean_api_base(load_settings().get("api_base")) + "/api.php"
+
+
+class ApiConfigError(ValueError):
+    """Guvensiz API yapilandirmasi.
+
+    Mesaji kullaniciya/ekrana gosterilebilir: anahtar materyali icermez,
+    yalnizca gerekce ve beklenen kullanim soylenir.
+    """
+
+
+def _default_api_host():
+    try:
+        from urllib.parse import urlsplit
+        return (urlsplit(API_BASE).hostname or "").lower()
+    except Exception:
+        return ""
+
+
+def is_dev_mode(settings=None):
+    """Acikca etkinlestirilmis gelistirme modu.
+
+    settings["dev_mode"] True veya DEPREM_DEV=1 ortam degiskeni.
+    Varsayilan kapali (uretim); bu bayrak uretim guvenligini gevsetmez,
+    yalnizca localhost adresine izin verir (anahtar yine de gonderilmez).
+    """
+    try:
+        if str(os.environ.get("DEPREM_DEV", "")).strip() == "1":
+            return True
+    except Exception:
+        pass
+    try:
+        return bool((settings or {}).get("dev_mode", False))
+    except Exception:
+        return False
+
+
+def validate_api_base(value, approved_extra=None, dev_enabled=False):
+    """Merkezi URL dogrulama (SEC-01). Test + fetch ayni kapidan gecer.
+
+    Dogrulananlar:
+    - sema: localhost disinda yalnizca https (http reddedilir),
+    - hostname: gercek hostname alanindan okunur; userinfo (@) reddedilir,
+    - host: varsayilan veya onayli listedekine birebir esit olmali
+      (benzer-gorunumlu alan adlari eslesmez),
+    - port: 443/bos disinda supheli port reddedilir (localhost haric),
+    - localhost/127.0.0.1/[::1]: yalnizca ACIKCA etkinlestirilmis
+      gelistirme modunda (dev_enabled) kabul edilir, "local-dev" doner ve
+      bu yolda API anahtari ASLA eklenmez. Uretim modunda reddedilir.
+
+    Doner: (endpoint_url, host_turu) — tur: "default"|"approved"|"local-dev".
+    Desteklenmeyen yapi ApiConfigError yukseltir (mesaji Guvenlidir).
+    """
+    from urllib.parse import urlsplit
+    v = (value or "").strip().rstrip("/")
+    if not v:
+        v = API_BASE
+    if "://" not in v:
+        v = "https://" + v
+    try:
+        parts = urlsplit(v)
+    except Exception:
+        raise ApiConfigError("Adres cozumlenemedi; ornek: https://sismikharita.com")
+    if parts.username or parts.password or "@" in (parts.netloc or ""):
+        raise ApiConfigError("URL'de kullanici bilgisi kabul edilmez.")
+    host = (parts.hostname or "").lower().rstrip(".")
+    if not host or any(ch.isspace() for ch in host):
+        raise ApiConfigError("Gecersiz adres; ornek: https://sismikharita.com")
+    try:
+        port = parts.port
+    except ValueError:
+        raise ApiConfigError("Gecersiz port; ornek: https://sismikharita.com")
+    default_host = _default_api_host()
+    approved = {str(a or "").lower().rstrip(".") for a in (approved_extra or [])}
+    approved.discard("")
+    is_local = host in ("localhost", "127.0.0.1", "::1")
+    endpoint = v.rstrip("/") + "/api.php"
+    if is_local:
+        if parts.scheme.lower() not in ("http", "https"):
+            raise ApiConfigError("Yerel adres semasi http/https olmali.")
+        if not dev_enabled:
+            raise ApiConfigError(
+                "Yerel adres yalnizca gelistirme modunda kullanilir "
+                "(DEPREM_DEV=1 veya ayarlarda dev_mode). Uretimde reddedildi.")
+        return endpoint, "local-dev"
+    if parts.scheme.lower() != "https":
+        raise ApiConfigError(
+            "HTTP desteklenmiyor (anahtar duz metinle gider). "
+            "https://sismikharita.com kullanin.")
+    if port not in (None, 443):
+        raise ApiConfigError(f"Supheli port (:{port}) kabul edilmez; 443 kullanin.")
+    if host == default_host or host in approved:
+        return endpoint, ("default" if host == default_host else "approved")
+    raise ApiConfigError(
+        f"'{host}' onayli API hostu degil. Varsayilan ({default_host}) "
+        "kullanin ya da hostu ayarlarda onaylayin.")
 
 
 def get_api_key():

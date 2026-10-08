@@ -107,6 +107,53 @@ def b_uncertainty(b_value, n):
         return 0.0
     return b_value / math.sqrt(n)
 
+
+# ---------------------------------------------------------------------------
+# KANONIK BUYUKLUK MODELİ (K2: yalnizca bellek-ici, K3'te DB'ye tasinacak)
+# ---------------------------------------------------------------------------
+# ML, Mw, MD AYNI olcek degildir; kanitsiz donusumle birbirine cevrilmez.
+# Asagidaki oncelik yalnizca GOSTERIM/tek-deger tercihidir:
+MAG_PRIORITY = ("Mw", "ML", "MD")
+
+
+def select_canonical(ml=None, mw=None, md=None, source="?", inferred=False):
+    """Olcutleri turuyle koruyarak kanonik deger sec.
+
+    Doner: {"value": float|None, "type": "Mw"|"ML"|"MD"|None,
+            "source": str, "inferred": bool, "missing": bool}.
+    - Acik None kontrolu (or-zinciri yok): gecerli 0.0/negatif korunur.
+    - Tum turler eksikse value None (0.0 degil).
+    - inferred=True: tur kaynagin acik beyanina degil, kurala dayanir.
+    """
+    _by_type = {"Mw": mw, "ML": ml, "MD": md}
+    for _t in MAG_PRIORITY:
+        _v = _by_type[_t]
+        if _v is not None:
+            try:
+                _f = float(_v)
+            except (TypeError, ValueError):
+                continue
+            return {"value": _f, "type": _t, "source": source,
+                    "inferred": bool(inferred), "missing": False}
+    return {"value": None, "type": None, "source": source,
+            "inferred": bool(inferred), "missing": True}
+
+
+def legacy_magnitude(ml=None, mw=None, md=None):
+    """Eski `ml or mw or md or 0.0` davranisinin birebir karsiligi.
+
+    K2 boyunca uretim `magnitude` alani bununla doldurulur; istatistik,
+    sayim, Poisson, risk ve alarm davranisi bit-bit korunur.
+
+    K3 BAGIMLILIGI: tum turler eksikken uretilen 0.0, `if e.get(...)`
+    turu falsy-kontrollerden duserek b-fit/Poisson'dan cogunlukla dislanir
+    (Mc filtresi + esik kosullari), ANCAK satir sayimlarinda
+    (quake_count, haftalik/aylik) gecerli kayit gibi sayilir. K3'te
+    magnitude_canonical (None) istatistiklere gecerken bu etki
+    sifirlanacaktir; eksik buyukluk asla gercek sifir-buyukluk sayilmaz.
+    """
+    return ml or mw or md or 0.0
+
 def calculate_b_value(magnitudes, m_min=None, method="mle"):
     """
     Gutenberg-Richter b-değeri hesaplama.
@@ -193,25 +240,32 @@ def poisson_probability(lambda_rate, time_window_days=7):
     return 1 - math.exp(-lambda_rate * time_window_days)
 
 
-def gr_rate_m4(a_value, b_value, t_obs_days=30.0):
-    """GR dışdeğerlemesinden M≥4 günlük hız: λ = 10^(a−4b)/T_obs.
+def gr_rate(a_value, b_value, threshold, t_obs_days=30.0):
+    """GR dışdeğerlemesinden eşik-üstü günlük hız: λ = 10^(a−b·eşik)/T_obs.
 
-    Gözlenen M≥4 yoksa gözlenen hız 0 çıkar ve olasılık %0 görünür
-    (imkânsızmış gibi — YANLIŞ mesaj). GR yasası aynı katalogdan
-    büyük-magnitüd hızını tahmin eder; bu fonksiyon o yedek hızı verir.
+    Yalnızca ÖLÇÜLMÜŞ a,b ile anlamlıdır; varsayılan (1.0, 3.0) ile
+    çağrılmamalıdır (çağıran yeterliliği denetler).
     """
     try:
         if b_value <= 0 or t_obs_days <= 0:
             return 0.0
-        return (10 ** (a_value - b_value * 4.0)) / t_obs_days
+        return (10 ** (a_value - b_value * threshold)) / t_obs_days
     except Exception:
         return 0.0
 
 
-def estimate_lambda(earthquakes, min_mag=None, declustered=False):
+def gr_rate_m4(a_value, b_value, t_obs_days=30.0):
+    """Geriye uyumluluk: gr_rate(a, b, 4.0, T)."""
+    return gr_rate(a_value, b_value, 4.0, t_obs_days)
+
+
+def estimate_lambda(earthquakes, min_mag=None, declustered=False, window_days=None):
     """
     Günlük olay hızı λ (lambda) tahmini.
-    λ = N / T (gün)
+
+    window_days verilirse payda GERÇEK gözlem penceresidir (λ = N/T_pencere);
+    verilmezse eski davranış (ilk-son olay aralığı) kullanılır.
+    SCI-03: olasılık hesapları her zaman window_days ile yapılmalıdır.
 
     declustered=True ise Gardner-Knopoff (1974) pencereleriyle artçılar
     ayıklanır, artçı-kümelenmeden arındırılmış zemin hızı döner.
@@ -229,6 +283,9 @@ def estimate_lambda(earthquakes, min_mag=None, declustered=False):
     if not mags:
         return 0.0
 
+    if window_days is not None and window_days > 0:
+        return len(mags) / window_days
+
     timestamps = [e["timestamp"] for e in earthquakes if e.get("timestamp")]
     if not timestamps:
         return 0.0
@@ -238,6 +295,155 @@ def estimate_lambda(earthquakes, min_mag=None, declustered=False):
         return 0.0
 
     return len(mags) / t_span_days
+
+
+def report_sufficient(risk_report):
+    """Başlık risk/olasılık gösterimleri için yeterlilik kapısı.
+
+    Yetersiz katalogda risk skoru/seviyesi GÖSTERİLMEZ ("—").
+    Yetersizlik ayrı bir durumdur; yeşil/DÜŞÜK gibi yansıtılmaz.
+    Bilinmiyorsa güvenli tarafta kal: False.
+    """
+    try:
+        return bool(risk_report.get("poisson", {}).get("sufficient", False))
+    except Exception:
+        return False
+
+
+def validate_mc(magnitudes, mc, b_value, a_value, min_above=10,
+                min_gft_r=0.90, max_b_rel=0.40):
+    """Mc TAHMİNİ ≠ Mc DOĞRULAMA. Bağımsız kontroller:
+
+    1. Mc üstü yeterli kuyruk (n_above ≥ 10),
+    2. GR uyumu (GFT): Mc'den gözlenen maksimuma 0.5'lik kesimlerde
+       R = 1 − Σ|gözlenen−model|/Σgözlenen ≥ 0.90
+       (Wiemer & Wyss 2000 — %90 güven eşiği),
+    3. b'nin göreli belirsizliği σ_b/b ≤ eşiği (Aki: σ ≈ b/√n).
+
+    Döner: (dogrulandi: bool, kontroller: dict).
+    """
+    mags = [m for m in (magnitudes or []) if m is not None]
+    above = [m for m in mags if m >= mc - DELTA_M / 2]
+    n_above = len(above)
+    checks = {"n_above": n_above}
+    if n_above < min_above:
+        checks.update({"validated": False,
+                       "reason": f"kuyruk az (n={n_above}<{min_above})"})
+        return False, checks
+    m_max = max(mags)
+    num, den, k = 0.0, 0, 0
+    while mc + k * 0.5 <= m_max + 0.5 and k < 8:
+        cut = mc + k * 0.5
+        obs = sum(1 for m in mags if m >= cut)
+        try:
+            pred = 10 ** (a_value - b_value * cut)
+        except Exception:
+            pred = 0.0
+        num += abs(obs - pred)
+        den += obs
+        k += 1
+    gft_r = (1.0 - num / den) if den > 0 else 0.0
+    checks["gft_R"] = round(gft_r, 3)
+    sig = b_uncertainty(b_value, n_above)
+    b_rel = (sig / b_value) if b_value > 0 else 1.0
+    checks["b_rel_unc"] = round(b_rel, 3)
+    ok_fit = gft_r >= min_gft_r
+    ok_b = b_rel <= max_b_rel
+    checks.update({"fit_ok": ok_fit, "b_ok": ok_b})
+    if not ok_fit:
+        checks["reason"] = f"GR uyumsuz (GFT-R={gft_r:.2f}<{min_gft_r})"
+    elif not ok_b:
+        checks["reason"] = f"b belirsiz (s/b={b_rel:.2f})"
+    else:
+        checks["reason"] = "uyumlu"
+    checks["validated"] = bool(ok_fit and ok_b)
+    return (ok_fit and ok_b), checks
+
+
+def catalog_sufficiency(quakes, window_days=30.0, min_n=10, min_span_days=7.0):
+    """Veri yeterliliği çok ölçütlü kapı ( Faz A rev.2 ).
+
+    Birlikte değerlendirilir: örneklem büyüklüğü, gözlem süresi,
+    büyüklük eşiği üstü örneklem, katalog tamlığı (Mc), kapsama.
+    Yetersizse olasılık/skor üretilmez (yanıltıcı yüzde yok).
+
+    Mc sözlüğünde ayrım: mc_estimated (MAXC sayısal Mc buldu) ≠
+    mc_validated (tamlık + GR güvenilirliği bağımsız kontrollerle
+    desteklendi). GR dışdeğerleme YALNIZCA mc_validated iken başlık
+    olasılığına girer.
+    """
+    qs = list(quakes or [])
+    n = len(qs)
+    ts = sorted(e["timestamp"] for e in qs if e.get("timestamp"))
+    span = (ts[-1] - ts[0]) / 86400 if len(ts) >= 2 else 0.0
+    mags = [e["magnitude"] for e in qs if e.get("magnitude") is not None]
+    mc_est = estimate_mc_maxc(mags)
+    if mc_est is not None:
+        mc, mc_estimated = mc_est, True
+    else:
+        mc, mc_estimated = (max(min(mags), 1.0) if mags else 1.0), False
+    n_above = sum(1 for m in mags if m >= mc - DELTA_M / 2)
+    if mc_estimated:
+        b_v, a_v, _ = calculate_b_value(mags)
+        mc_validated, validation = validate_mc(mags, mc, b_v, a_v)
+    else:
+        mc_validated, validation = False, {"validated": False,
+                                           "reason": "Mc tahmin edilemedi"}
+    coverage = round(min(span / window_days, 1.0), 3) if window_days > 0 else 0.0
+    reasons = []
+    if n < min_n:
+        reasons.append(f"örneklem az (n={n}<{min_n})")
+    if span < min_span_days:
+        reasons.append(f"kısa süre ({span:.1f}g<{min_span_days}g)")
+    if n_above < min_n:
+        reasons.append(f"eşik üstü az (n={n_above}<{min_n})")
+    return {"sufficient": not reasons, "reasons": reasons, "n": n,
+            "n_above_mc": n_above, "mc": mc, "mc_estimated": mc_estimated,
+            "mc_validated": mc_validated, "validation": validation,
+            "span_days": round(span, 1), "coverage": coverage}
+
+
+def forecast_poisson(quakes, threshold=4.0, forecast_days=7.0,
+                     t_obs_days=30.0, region="marmara"):
+    """TEK Poisson servisi (rapor + tahmin + GUI + CLI + Telegram aynı sonuç).
+
+    - Hız paydası GERÇEK gözlem penceresidir (SCI-03).
+    - Gözlenen eşik-üstü hız 0 ise ve Mc DOĞRULANMIŞSA, ÖLÇÜLMÜŞ a,b'den
+      GR dışdeğerlemesi kullanılır (etiketlenir). Mc yalnızca tahmin
+      edildiyse (doğrulanmadıysa) GR başlığa girmez; lambda_gr alanı
+      varsayımsal tanı değeri olarak döner, olasılık üretilmez
+      (None → "— / yetersiz veri").
+    - Döner: hızlar, kaynak etiketi, olasılıklar, yeterlilik, etiket bilgisi.
+    """
+    suf = catalog_sufficiency(quakes, window_days=t_obs_days)
+    mags = [e["magnitude"] for e in (quakes or []) if e.get("magnitude") is not None]
+    b_val, a_val, mc = calculate_b_value(mags)
+    lam_obs = estimate_lambda(quakes, min_mag=threshold, window_days=t_obs_days)
+    lam_bg = estimate_lambda(quakes, min_mag=threshold, declustered=True,
+                             window_days=t_obs_days)
+    lam_gr = None
+    gr_validated = bool(suf["sufficient"] and suf["mc_validated"])
+    if suf["sufficient"] and suf["mc_estimated"]:
+        # Varsayımsal tanı değeri: başlıkta YALNIZCA gr_validated ise kullanılır.
+        lam_gr = gr_rate(a_val, b_val, threshold, t_obs_days)
+    if lam_bg > 0:
+        lam_eff, source = lam_bg, "gozlenen"
+    elif gr_validated and (lam_gr or 0) > 0:
+        lam_eff, source = lam_gr, "gr-model"
+    else:
+        lam_eff, source = 0.0, "yok"
+    p7 = poisson_probability(lam_eff, 7.0) if source != "yok" else None
+    p30 = poisson_probability(lam_eff, 30.0) if source != "yok" else None
+    p_fc = (poisson_probability(lam_eff, forecast_days)
+            if source != "yok" and forecast_days > 0 else None)
+    return {"threshold": threshold, "forecast_days": forecast_days,
+            "t_obs_days": t_obs_days, "region": region,
+            "lambda_obs": lam_obs, "lambda_bg": lam_bg,
+            "lambda_gr": lam_gr, "lambda_eff": lam_eff,
+            "rate_source": source, "p_7days": p7, "p_30days": p30,
+            "p_forecast": p_fc, "gr_validated": gr_validated,
+            "sufficient": suf["sufficient"], "sufficiency": suf,
+            "b_value": b_val, "a_value": a_val, "mc": mc}
 
 
 def _gk_windows(magnitude):
@@ -302,7 +508,9 @@ def omori_forecast(earthquakes, days_ahead=7, m_cut=3.0):
 
     Türkiye kalibrasyonu (Müderrisoğlu & Yazgan 2020; Mw≥5.9 Türkiye
     artçı dizileri): a=−1.90, b=1.11, p=1.20, c=0.05 gün.
-    Son 30 gündeki en büyük M≥4.0 olayı ana şok sayılır.
+    KAPI: yalnizca turu dogrulanmis Mw (magnitude_mw veya mag_type Mw)
+    ve Mw≥5.9 ana sokta hesap uretilir; aksi halde None doner
+    (TR-2020 bu olaya uygulanamaz).
 
     Döner: None (uygun ana şok yok) veya sözlük.
     Kaynak: Muderrisoglu & Yazgan (2020) Earthq. Eng. Eng. Vib. 19:149-160,
@@ -310,13 +518,23 @@ def omori_forecast(earthquakes, days_ahead=7, m_cut=3.0):
     """
     from datetime import datetime as _dt
     now = _dt.now().timestamp()
-    cands = [e for e in (earthquakes or [])
-             if (e.get("magnitude") or 0) >= 4.0 and e.get("timestamp")
-             and 0 <= now - e["timestamp"] <= 30 * 86400]
+    cands = []
+    for e in (earthquakes or []):
+        mw_declared = e.get("magnitude_mw")
+        if mw_declared is None and e.get("mag_type") == "Mw":
+            mw_declared = e.get("magnitude")
+        if mw_declared is None:
+            continue
+        try:
+            _mwf = float(mw_declared)
+        except (TypeError, ValueError):
+            continue
+        if _mwf >= 5.9 and e.get("timestamp") \
+                and 0 <= now - e["timestamp"] <= 30 * 86400:
+            cands.append((e, _mwf))
     if not cands:
         return None
-    main = max(cands, key=lambda e: e["magnitude"])
-    mm = main["magnitude"]
+    main, mm = max(cands, key=lambda t: t[1])
     t0 = max((now - main["timestamp"]) / 86400, 0.0)
 
     a, b, p, c = -1.90, 1.11, 1.20, 0.05  # Türkiye (Muderrisoglu & Yazgan 2020)
@@ -650,14 +868,23 @@ def _compute_risk_score(quakes, b_value, a_value, total_energy):
         depth_score = 0.5
     scores.append(("derinlik", depth_score, 0.10))
 
-    # 6. Poisson olasılığı (M≥4.0 olma olasılığı)
-    lambda_rate = estimate_lambda(quakes, min_mag=3.0)
-    poisson_prob = poisson_probability(lambda_rate, time_window_days=7)
-    poisson_score = min(1.0, poisson_prob * 2.0)  # scale
-    scores.append(("poisson", poisson_score, 0.15))
+    # 6. Poisson aktivite gostergesi (M≥4.0, 30g pencere, zemin hiz).
+    # TEK servis kullanilir; boyutsuz gostergedir, olasilik degil.
+    # Yetersiz veride bilesen uretilmez (agirliklar renormalize olur).
+    try:
+        _fc = forecast_poisson(quakes, threshold=4.0, forecast_days=7.0,
+                               t_obs_days=30.0)
+        _p7 = _fc.get("p_7days")
+    except Exception:
+        _p7 = None
+    if _p7 is not None:
+        poisson_score = min(1.0, _p7 * 2.0)  # olcek (eski davranisla uyumlu)
+        scores.append(("poisson", poisson_score, 0.15))
 
     # Ağırlıklı toplam
     total_weight = sum(w for _, _, w in scores)
+    if total_weight <= 0:
+        return 0.0
     weighted_sum = sum(val * weight for _, val, weight in scores)
 
     return weighted_sum / total_weight
@@ -666,17 +893,30 @@ def _compute_risk_score(quakes, b_value, a_value, total_energy):
 _report_cache = {}  # region -> (computed_at, signature, report)
 
 
-def _catalog_signature(region, days=60):
-    """Veri değişimini yakalayan hafif imza (adet, en yeni zaman)."""
+def _catalog_signature(region, days=60, db_path=None):
+    """Veri değişimini yakalayan hafif imza (adet, en yeni zaman).
+
+    db_path verilmezse MAIN_DB. v2 semasinda gozlem tablosundan okur
+    (legacy tablo adi kullanilmaz).
+    """
     from datetime import datetime as _dt3
-    from deprem_izleme.db import _region_clause
+    from deprem_izleme.db import _region_clause, _is_v2_conn, get_db as _gdb
+    from deprem_izleme import db as _dbmod
     cutoff = int(_dt3.now().timestamp()) - days * 86400
     rclause, rparams = _region_clause(region)
+    if rclause:
+        rclause = rclause.replace("region_tag", "o.region_tag")
     where = f"WHERE timestamp >= ? AND {rclause}" if rclause else "WHERE timestamp >= ?"
-    conn = get_db(MAIN_DB)
+    conn = _gdb(db_path or _dbmod.MAIN_DB)
     try:
+        if _is_v2_conn(conn):
+            table, tcol = "observations o", "o.timestamp"
+        else:
+            table, tcol = "earthquakes", "timestamp"
+            where = where.replace("o.region_tag", "region_tag").replace(
+                "o.timestamp", "timestamp")
         row = conn.execute(
-            f"SELECT COUNT(*), COALESCE(MAX(timestamp), 0) FROM earthquakes {where}",
+            f"SELECT COUNT(*), COALESCE(MAX({tcol}), 0) FROM {table} {where}",
             [cutoff] + rparams).fetchone()
         return (row[0], row[1])
     finally:
@@ -696,7 +936,7 @@ def daily_risk_light(mags):
     return round(0.65 * m_score + 0.35 * c_score, 3)
 
 
-def get_comprehensive_risk_report(region="marmara", max_age=45):
+def get_comprehensive_risk_report(region="marmara", max_age=45, db_path=None):
     """
     Kapsamlı risk raporu - tüm metrikleri bir arada.
     Artık fay segment analizi, tarihsel veri ve BVAL trendini de içerir.
@@ -706,34 +946,37 @@ def get_comprehensive_risk_report(region="marmara", max_age=45):
     """
     from datetime import datetime as _dt2
     now_ts = _dt2.now().timestamp()
-    sig = _catalog_signature(region)
+    sig = _catalog_signature(region, db_path=db_path)
     ent = _report_cache.get(region)
     if ent and now_ts - ent[0] < max_age and ent[1] == sig:
         return ent[2]
 
-    quakes = get_earthquakes(since=datetime.now() - timedelta(days=30), region=region)
+    quakes = get_earthquakes(since=datetime.now() - timedelta(days=30), region=region,
+                             db_path=db_path)
     mags = [q["magnitude"] for q in quakes if q.get("magnitude")]
 
     b_val, a_val, mc = calculate_b_value(mags)
     total_energy = sum(seismic_energy_joules(m) for m in mags)
     risk = _compute_risk_score(quakes, b_val, a_val, total_energy)
 
-    # Poisson olasılıkları: HAM oran + artçı-ayıklanmış (GK74) zemin oranı.
-    # Poisson varsayımı gereği raporlanan olasılık zemin orana dayanır.
-    lambda_m3 = estimate_lambda(quakes, min_mag=3.0)
-    lambda_m4 = estimate_lambda(quakes, min_mag=4.0)
-    lambda_m3_bg = estimate_lambda(quakes, min_mag=3.0, declustered=True)
-    lambda_m4_bg = estimate_lambda(quakes, min_mag=4.0, declustered=True)
-    # Gözlenen M≥4 yoksa hız 0 çıkar (%0.0 imkânsızmış gibi görünür).
-    # Yedek: aynı kataloğun GR dışdeğerlemesi (etiketlenir).
-    lambda_m4_gr = gr_rate_m4(a_val, b_val, 30.0)
-    lambda_m4_eff = lambda_m4_bg if lambda_m4_bg > 0 else lambda_m4_gr
-    m4_gr_used = lambda_m4_bg <= 0 and lambda_m4_gr > 0
-    p_m4_7days = poisson_probability(lambda_m4_eff, 7)
-    p_m4_30days = poisson_probability(lambda_m4_eff, 30)
+    # Poisson: TEK servis (SCI-03/04). Rapor + tahmin + GUI + CLI + TG aynı sonuç.
+    # Hız paydası gerçek 30g pencere; yetersiz katalogda olasılık üretilmez.
+    fc4 = forecast_poisson(quakes, threshold=4.0, forecast_days=7.0,
+                           t_obs_days=30.0, region=region)
+    lambda_m3 = estimate_lambda(quakes, min_mag=3.0, window_days=30.0)
+    lambda_m4 = estimate_lambda(quakes, min_mag=4.0, window_days=30.0)
+    lambda_m3_bg = estimate_lambda(quakes, min_mag=3.0, declustered=True,
+                                   window_days=30.0)
+    lambda_m4_bg = fc4["lambda_bg"]
+    lambda_m4_gr = fc4["lambda_gr"]
+    m4_gr_used = fc4["rate_source"] == "gr-model"
+    p_m4_7days = fc4["p_7days"]
+    p_m4_30days = fc4["p_30days"]
+    poisson_sufficient = fc4["sufficient"]
 
     z = detect_anomalous_activity(quakes)
-    m_max_expected = expected_max_magnitude(b_val, a_val)
+    m_max_expected = (expected_max_magnitude(b_val, a_val)
+                      if poisson_sufficient else None)
     max_mag = max(mags) if mags else 0
     b_std = b_uncertainty(b_val, len([m for m in mags if m >= mc]))
 
@@ -779,7 +1022,8 @@ def get_comprehensive_risk_report(region="marmara", max_age=45):
             "a_value": round(a_val, 4),
             "magnitude_completeness": round(mc, 2),
             "mc_method": "MAXC+0.2" if mc else "varsayılan",
-            "expected_max_magnitude": round(m_max_expected, 2),
+            "expected_max_magnitude": (round(m_max_expected, 2)
+                                       if m_max_expected is not None else None),
             "observed_max_magnitude": max_mag,
             "b_anomaly": round(b_val - 1.0, 4),
         },
@@ -791,10 +1035,18 @@ def get_comprehensive_risk_report(region="marmara", max_age=45):
             "lambda_m3_per_day": round(lambda_m3, 4),
             "lambda_m4_per_day": round(lambda_m4, 4),
             "lambda_m4_bg_per_day": round(lambda_m4_bg, 4),
-            "lambda_m4_gr_per_day": round(lambda_m4_gr, 6),
+            "lambda_m4_gr_per_day": (round(lambda_m4_gr, 6)
+                                     if lambda_m4_gr is not None else None),
+            "lambda_m4_eff_per_day": round(fc4["lambda_eff"], 6),
+            "rate_source": fc4["rate_source"],
             "p_m4_gr_tahmini": m4_gr_used,
-            "p_m4_7days_pct": round(p_m4_7days * 100, 2),
-            "p_m4_30days_pct": round(p_m4_30days * 100, 2),
+            "gr_validated": fc4["gr_validated"],
+            "p_m4_7days_pct": (round(p_m4_7days * 100, 2)
+                               if p_m4_7days is not None else None),
+            "p_m4_30days_pct": (round(p_m4_30days * 100, 2)
+                                if p_m4_30days is not None else None),
+            "sufficient": poisson_sufficient,
+            "sufficiency": fc4["sufficiency"],
             "declustered": True,
             "background_count": len(bg_quakes),
         },

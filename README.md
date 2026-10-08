@@ -2,8 +2,10 @@
 
 Marmara Denizi ve İstanbul çevresindeki depremleri izleyen, bilimsel
 yöntemlerle risk analizi yapan açık kaynaklı masaüstü uygulaması
-(Python + CustomTkinter). İnternetsiz çalışan gömülü harita, çok kaynaklı
-veri katmanları ve otomatik güncelleme desteği içerir.
+(Python + CustomTkinter). İnternetsiz çalışan gömülü harita ve çok kaynaklı
+veri katmanları içerir. Otomatik indirme/kurma yolu güvenlik denetimi
+tamamlanana dek kapalıdır (B3 bekleniyor); sürüm denetimi yalnızca
+bilgi verir, yeni sürüm elle indirilir.
 
 > **Yasal uyarı:** Bu uygulama bir erken uyarı sistemi değildir.
 > Sayılar istatistiksel eğilim göstergesidir; resmi deprem bilgileri için
@@ -22,19 +24,24 @@ veri katmanları ve otomatik güncelleme desteği içerir.
 - **Bilimsel analiz:** Gutenberg-Richter b-değeri (Aki 1965 MLE + Utsu
   1966 düzeltmesi, MAXC tamlık +0.2), artçı-ayıklanmış zemin hızdan
   Poisson olasılıkları (Gardner-Knopoff 1974), Türkiye kalibrasyonlu
-  artçı öngörüsü (Müderrisoğlu & Yazgan 2020), Coulomb stres transferi,
+  artçı öngörüsü (Müderrisoğlu & Yazgan 2020), Coulomb kavram
+  referansı (basitleştirilmiş gösterge — gerçek ΔCFF çözümü değil),
   fay segment riskleri, b-değeri trendi (BVAL yaklaşımı).
-- **Dürüstlük ilkesi:** Kalibre edilmemiş skorlar "olasılık" diye
-  sunulmaz; kalibre olasılık yalnızca Poisson bileşenidir (bkz.
-  Metodoloji sayfası ve Jordan vd. 2011 ICEF notu). Kısa katalogdan
-  büyük-magnitüd dışdeğerlemeleri mertebe tahmini olarak işaretlenir.
+- **Dürüstlük ilkesi:** Bu uygulama kalibre edilmiş deprem tahmini
+  üretemez. Ekrandaki tüm olasılıklar Poisson modeli tahminidir
+  (kalibre edilmemiş); bileşik skor "olasılık" değil 0-100 ölçekli
+  boyutsuz bir aktivite göstergesidir. Veri yetersizse sayı yerine
+  "— / yetersiz veri" gösterilir (bkz. Metodoloji sayfası ve
+  Jordan vd. 2011 ICEF notu). GR N=1 seviyesi ("Beklenen Mmax")
+  bir tahmin değil, model eğrisinin yıllık-frekans eşiğidir.
 - **Grafikler:** günlük maksimum + risk skoru, günlük sayı, b-trendi,
   enerji, FMD + GR uyumu, saatlik/derinlik dağılımları, büyüklük-zaman
   serisi, tam ekran görünüm.
 - **Bildirimler:** eşik/seviye/cooldown filtreli Telegram uyarıları,
   bildirim geçmişi.
 - **Konfor:** koyu + açık tema, ilk açılışta API kurulum rehberi,
-  açılışta + manuel güncelleme denetimi (GitHub Releases).
+  açılışta + manuel sürüm denetimi (yalnızca bilgi; otomatik
+  indirme/kurma kapalı, bkz. Güncelleme bölümü).
 
 ## Kurulum
 
@@ -81,19 +88,20 @@ python build.py --release  # + GitHub Release paketi (win64 zip)
 
 - Build, `dist/` içindeki kullanıcı `data/` klasörünü **korur**
   (yedekler ve geri yükler).
+## Güncelleme (mevcut durum)
+
+- Uygulama açılışta (sessizce) ve Ayarlar'dan (manuel) yeni release
+  denetler — bu yalnızca **bilgi** verir.
+- **Otomatik indirme/kurma/çalıştırma kapalıdır** (SEC-03/04; imzalı
+  güvenli güncelleme mekanizması B3 kurulana dek). "Güvenli otomatik
+  güncelleme" iddiası yoktur.
+- Yeni sürümü GitHub Releases sayfasından elle indirin.
+  Kişisel dosyalarınızı `data/` altında tutun.
+- Depo gizliyken sürüm denetimi "Denetlenemedi" der; bu normaldir,
+  depo herkese açılınca denetim çalışır.
 - Release akışı: `deprem_izleme/version.py` dosyasındaki sürümü
   artırın (`1.0.0` → `1.0.1`), `python build.py --release` ile paketi
   üretin, GitHub'da `v1.0.1` etiketiyle release açıp zip'i ekleyin.
-- Uygulama açılışta (sessizce) ve Ayarlar'dan (manuel) yeni release
-  denetler; paket bulunduysa indirip `data/` hariç dosyaları
-  değiştirir ve yeniden başlar. Kişisel dosyalarınızı `data/`
-  altında tutun (güncelleme bu klasöre dokunmaz). Depo adresi
-  `deprem_izleme/config.py` içindeki `GITHUB_OWNER` / `GITHUB_REPO`
-  alanlarındadır.
-
-Taşınabilir (portable) yapı bilinçli tercih edildi: kurulum
-gerektirmez ve uygulama kendi kendini tek klasör değişimiyle
-güncelleyebilir (kurulum sihirbazı bu akışı zorlaştırırdı).
 
 ## Proje yapısı
 
@@ -146,6 +154,28 @@ da yereldir.
 | --- | --- |
 | `DEPREM_TELEGRAM_TOKEN` / `DEPREM_TELEGRAM_CHAT_ID` | Telegram bildirimi |
 | `DEPREM_START_PAGE` | Açılışta doğrudan sayfa (örn. `harita`) |
+| `DEPREM_DEV=1` | Geliştirme modu: localhost API adresine izin verir (anahtar yine de gönderilmez; üretimde kapalı) |
+
+### Telegram kurulum (güvenli yöntem)
+
+Token **asla** komut satırına yazılmaz (`--token` güvenlik kararıyla
+kaldırıldı; eski komutlarda geçiyordu, artık hata verir):
+
+```bash
+set DEPREM_TELEGRAM_TOKEN=...        # Windows, oturumluk (kalıcı için ayarlar ekranı)
+python main.py telegram-setup        # token gizli sorulur, ekranda görünmez
+```
+
+Ayarlar ekranındaki Telegram bölümü de aynı kuralı uygular.
+
+### Büyüklük türleri (ML / Mw / MD)
+
+ML, Mw ve MD aynı ölçek değildir; birbirine dönüştürülmez. Her kayıt
+türünü (`mag_type`), kaynağını ve revizyonunu taşır; gösterim için
+Mw → ML → MD sırasıyla tek değer seçilir (`magnitude_canonical`).
+Kaynağın açıkça bildirmediği tepe `magnitude` değeri `unknown` sayılır.
+Bu alanlar şu an yalnızca bellek içindedir; veritabanına yazılmaz
+(K3'teki olay–kaynak gözlemi ayrımıyla taşınacak).
 
 ## Lisans
 

@@ -1,0 +1,11 @@
+{
+  "_aciklama": "ORNEK ayar dosyasi — SAHTE degerler icerir. data/settings.json yerine kullanilabilir sablon; gercek anahtar YAZMAYIN.",
+  "api_base": "https://sismikharita.com",
+  "api_key": "",
+  "telegram_token": "",
+  "telegram_chat_id": "",
+  "telegram_enabled": false,
+  "telegram_threshold": 0.7,
+  "telegram_levels": ["red", "orange"],
+  "telegram_cooldown_h": 6
+}

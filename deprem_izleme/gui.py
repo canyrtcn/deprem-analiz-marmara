@@ -21,7 +21,7 @@ from deprem_izleme.fetcher import fetch_and_store
 from deprem_izleme.fetcher_koeri import fetch_koeri
 from deprem_izleme.aggregation import (
     get_comprehensive_risk_report, compute_weekly_stats, compute_monthly_stats,
-    calculate_b_value, seismic_energy_joules,
+    calculate_b_value, seismic_energy_joules, report_sufficient,
 )
 from deprem_izleme.db import get_earthquakes, get_stats, get_weekly_history, get_monthly_history, insert_earthquake
 from deprem_izleme.predictor import EarthquakePredictor
@@ -128,12 +128,18 @@ REFRESH_INTERVALS = [15, 30, 60, 120, 180, 360]
 
 def friendly_error(ex):
     """Teknik hataları sade dile çevir (detay günlüğe gider)."""
-    import traceback as _tb
+    import traceback as _tbmod
     try:
-        _tb.print_exc()
+        from deprem_izleme.errors import redact
+        _tbtxt = redact("".join(_tbmod.format_exception(
+            type(ex), ex, ex.__traceback__)))
+        s = redact(str(ex) if str(ex) else repr(ex))
+    except Exception:
+        _tbtxt, s = "", (str(ex) if str(ex) else repr(ex))
+    try:
+        print(_tbtxt)
     except Exception:
         pass
-    s = str(ex) if str(ex) else repr(ex)
     first = s.split("\n")[0][:160]
     if "_MEI" in s or "WinError 3" in s:
         return ("Uygulama dosyaları okunamadı. "
@@ -769,6 +775,8 @@ class DepremGUI(ctk.CTk):
                 "yellow": COLOR_MODERATE, "green": COLOR_LOW}.get(lv, COLOR_TEXT)
 
     def _warn_tr(self, lv):
+        if lv is None:
+            return "—"
         return {"red": "KIRMIZI", "orange": "TURUNCU",
                 "yellow": "SARI", "green": "YEŞİL"}.get(lv, str(lv).upper())
 
@@ -1272,9 +1280,12 @@ class DepremGUI(ctk.CTk):
             errs.append(f"Sismik: {e}")
         try:
             from deprem_izleme.fetcher_koeri import fetch_koeri
-            kq = fetch_koeri()
-            self.map_cache["koeri"] = kq
-            ok.append(f"KOERI: {len(kq)}")
+            kres = fetch_koeri()
+            self.map_cache["koeri"] = kres["quakes"]
+            if kres["ok"]:
+                ok.append(f"KOERI: {len(kres['quakes'])}")
+            else:
+                errs.append(f"KOERI erişilemedi: {kres['error']}")
         except Exception as e:
             errs.append(f"KOERI: {e}")
         self._post_ui( lambda: self._apply_map_live(ok, errs))
@@ -1398,7 +1409,7 @@ class DepremGUI(ctk.CTk):
         self.pred_labels = {}
         pred_fields = [
             ("warning", "Uyarı Seviyesi"),
-            ("probability", "M≥4.0 Olasılık"),
+            ("aktivite", "Aktivite Göstergesi"),
             ("poisson_prob", "Poisson Olasılık"),
             ("expected_count", "Beklenen Deprem"),
             ("max_mag", "Beklenen Mmax"),
@@ -1475,9 +1486,11 @@ class DepremGUI(ctk.CTk):
              "P(M≥m, t) = 1 - exp(-λ·t)\n\n"
              "λ: artçı-ayıklanmış zemin hızı (/gün), t: zaman (gün)\n\n"
              "Bu uygulama λ'yı Gardner-Knopoff (1974) pencereleriyle\n"
-             "artçıklardan arındırılmış katalogdan hesaplar.\n"
+             "artçıklardan arındırılmış katalogdan, paydası gerçek\n"
+             "30 günlük gözlem penceresi olacak şekilde hesaplar.\n"
              "Temel varsayım: Zemin depremler bağımsızdır.\n"
              "Büyük depremler için zaman-bağımlı modeller (BPT) daha uygundur.\n\n"
+             "Poisson modeli tahmini (kalibre edilmemiş).\n\n"
              "Kaynak: Gardner & Knopoff (1974) BSSA; Parsons (2004) JGR",
              "https://agupubs.onlinelibrary.wiley.com/doi/10.1029/2003JB002667"),
             
@@ -1504,7 +1517,9 @@ class DepremGUI(ctk.CTk):
              "https://doi.org/10.1007/s11803-020-0553-2"),
             
             ("Kısa Vadeli Bileşik Gösterge (7 Gün)",
-             "5 bileşenin ağırlıklı ortalaması (0-1 skor):\n\n"
+             "5 bileşenin ağırlıklı ortalaması. Ekranda 0-100 ölçeğinde\n"
+             "gösterilir; bu YÜZDE OLASILIK DEĞİL, boyutsuz ve henüz\n"
+             "kalibre edilmemiş bir aktivite göstergesidir:\n\n"
              "• Poisson olasılığı (%30)\n"
              "• b-değeri trendi (%20): max(0, -Δb·5)\n"
              "• Enerji oranı (%15): (oran-0.5)/2\n"
@@ -1521,12 +1536,16 @@ class DepremGUI(ctk.CTk):
              "Kaynak: Jordan vd. (2011) Ann. Geophys. 54:315-326 (ICEF)",
              "https://doi.org/10.4401/ag-5350"),
            
-            ("Coulomb Stres Transferi", 
+            ("Coulomb Stres Transferi (Basitleştirilmiş Gösterge)",
+             "BU EKRAN GERÇEK BİR ΔCFF ÇÖZÜMÜ DEĞİLDİR: kayma/normal gerilme\n"
+             "bileşenleri bu uygulamada hesaplanmamaktadır; aşağıdaki formül\n"
+             "yalnızca kavramsal referanstır, tehlike tahmini üretmez.\n\n"
              "Coulomb Kırılma Kriteri: ΔCFF = Δτ + μ'·Δσn\n\n"
              "Δτ: kayma stressi değişimi\n"
              "Δσn: normal stress değişimi (pozitif = fayı açar)\n"
              "μ': efektif sürtünme katsayısı (0.4 varsayılan)\n\n"
-             "Eşik değer: ΔCFF ≥ 0.1 bar = deprem tetikleme potansiyeli\n\n"
+             "Eşik değer: ΔCFF ≥ 0.1 bar = deprem tetikleme potansiyeli\n"
+             "(literatür eşiğidir; bu uygulama tetikleme hesabı yapmaz)\n\n"
              "Kaynak: King, Stein & Lin (1994) BSSA; Toda & Stein (2005) Nature",
              "https://pubs.geoscienceworld.org/ssa/bssa/article/84/3/935/119895"),
             
@@ -2487,6 +2506,9 @@ class DepremGUI(ctk.CTk):
                     pass
             return
         if not info:
+            # Sözleşme: None YALNIZCA sürüm bilgisi alınıp güncellik
+            # doğrulandığında döner (updater.check_for_updates). 404/403/
+            # boş yanıt/ağ hatası {error} döner ve yukarıda elenir.
             try:
                 self.upd_status.configure(text=f"Güncel (v{APP_VERSION})",
                                           text_color=COLOR_SUCCESS)
@@ -2516,11 +2538,28 @@ class DepremGUI(ctk.CTk):
             pass
 
     def _start_update_apply(self, info):
+        # SEC-03/04: otomatik indirme/kurma yolu kapali (B3 bekleniyor).
+        # Kullaniciyi yaniltmamak icin "Guncelle" degil aciklama gosterilir;
+        # kurulu uygulama ve veriler etkilenmez.
         try:
-            self.upd_status.configure(text="İndiriliyor...", text_color=COLOR_WARNING)
+            self.upd_status.configure(
+                text="Otomatik güncelleme kapalı (güvenlik denetimi).",
+                text_color=COLOR_WARNING)
         except Exception:
             pass
-        threading.Thread(target=self._update_apply_worker, args=(info,), daemon=True).start()
+        try:
+            from tkinter import messagebox as _mb
+            page = (info or {}).get("page", "")
+            _mb.showinfo(
+                "Güncelleme Kapalı",
+                f"Yeni sürüm bulundu: v{info.get('version', '?')} "
+                f"(yüklü: v{APP_VERSION}).\n\n"
+                "İmzalı güvenli güncelleme henüz kurulmadığı için otomatik "
+                "indirme/kurma geçici olarak kapalıdır.\n"
+                "Yeni sürümü Releases sayfasından elle indirebilirsiniz."
+                + (f"\n\n{page}" if page else ""))
+        except Exception:
+            pass
 
     def _update_apply_worker(self, info):
         try:
@@ -2604,8 +2643,8 @@ class DepremGUI(ctk.CTk):
 
                         # KOERI'yi de dene
                         try:
-                            kquakes = fetch_koeri()
-                            for kq in kquakes:
+                            kres = fetch_koeri()
+                            for kq in kres["quakes"]:
                                 try:
                                     insert_earthquake(kq, region_tag=kq.get("region_tag", "marmara"))
                                 except Exception:
@@ -2658,10 +2697,12 @@ class DepremGUI(ctk.CTk):
             try:
                 from deprem_izleme.fetcher_koeri import fetch_koeri
                 from deprem_izleme.db import insert_earthquake
-                klist = fetch_koeri()
-                for kq in klist:
+                kres = fetch_koeri()
+                for kq in kres["quakes"]:
                     insert_earthquake(kq, region_tag=kq.get("region_tag", "marmara"))
-                kc = len(klist)
+                kc = len(kres["quakes"])
+                if not kres["ok"]:
+                    kerr = f" (KOERI erişilemedi: {kres['error']})"
             except Exception as ke:
                 kerr = f" (KOERI: {friendly_error(ke)})"
             # Veriyi ekrana yansıt
@@ -2827,19 +2868,25 @@ class DepremGUI(ctk.CTk):
         if not r or not p: return
 
         score = r["composite_risk_score"]
-        color = self._risk_color(score)
+        _suf = report_sufficient(r)
+        color = self._risk_color(score) if _suf else COLOR_TEXT2
 
-        self.risk_gauge.set(min(score, 1.0))
+        self.risk_gauge.set(min(score, 1.0) if _suf else 0.0)
         self.risk_gauge.configure(progress_color=color)
-        self.risk_gauge_label.configure(text=f"Risk: {score:.4f}", text_color=color)
+        self.risk_gauge_label.configure(
+            text=(f"Risk: {score:.4f}" if _suf else "Risk: — (yetersiz veri)"),
+            text_color=color)
         self.risk_chip.configure(fg_color=color)
-        self.risk_gauge_level.configure(text=r['risk_level'])
+        self.risk_gauge_level.configure(
+            text=(r['risk_level'] if _suf else "—"))
 
         self.metric_widgets["b-değeri"].configure(
             text=(f"{r['gutenberg_richter']['b_value']:.3f}"
                   if r.get("quake_count", 0) >= 10 else
                   f"{r['gutenberg_richter']['b_value']:.3f}*"))
-        self.metric_widgets["M≥4.0 7g"].configure(text=f"%{r['poisson']['p_m4_7days_pct']:.1f}")
+        _dp7 = r['poisson']['p_m4_7days_pct']
+        self.metric_widgets["M≥4.0 7g"].configure(
+            text=(f"%{_dp7:.1f}" if _dp7 is not None else "—"))
         st = self.stats_data
         self.metric_widgets["Son 24h"].configure(text=f"{st.get('son_24h', 0)}")
         e = r['energy']['total_energy_joules']
@@ -2852,9 +2899,9 @@ class DepremGUI(ctk.CTk):
         self.metric_widgets["Enerji"].configure(text=es)
 
         self.status_widgets["Trend"].configure(text=self._trend_tr(p.get('trend', '?')),
-                                                text_color=self._warn_color(p.get('warning_level', 'green')))
-        self.status_widgets["Uyarı"].configure(text=self._warn_tr(p.get('warning_level', 'green')),
-                                                text_color=self._warn_color(p.get('warning_level', 'green')))
+                                                text_color=self._warn_color(p.get('warning_level')))
+        self.status_widgets["Uyarı"].configure(text=self._warn_tr(p.get('warning_level')),
+                                                text_color=self._warn_color(p.get('warning_level')))
         self.status_widgets["Deprem Sayısı"].configure(text=str(len(self.earthquakes)))
         if self.earthquakes:
             last = self.earthquakes[0]
@@ -2914,11 +2961,18 @@ class DepremGUI(ctk.CTk):
         r, p = self.risk_report, self.prediction
         if not r or not p: return
 
+        _rp7 = r['poisson']['p_m4_7days_pct']
+        _rp30 = r['poisson']['p_m4_30days_pct']
+        _emmax = r['gutenberg_richter']['expected_max_magnitude']
+        _suf = report_sufficient(r)
+
         mapping = {
             "Bileşik Risk": {
-                "Risk Skoru": f"{r['composite_risk_score']:.4f}",
-                "Risk Seviyesi": r['risk_level'],
-                "Uyarı Seviyesi": self._warn_tr(p.get('warning_level', 'green')),
+                "Risk Skoru": (f"{r['composite_risk_score']:.4f}" if _suf
+                               else "— (yetersiz veri)"),
+                "Risk Seviyesi": (r['risk_level'] if _suf
+                                  else "— (yetersiz veri)"),
+                "Uyarı Seviyesi": self._warn_tr(p.get('warning_level')),
                 "b Anomalisi": f"{r['gutenberg_richter']['b_anomaly']:+.4f}",
             },
             "Gutenberg-Richter": {
@@ -2926,15 +2980,16 @@ class DepremGUI(ctk.CTk):
                 "b-σ": f"±{r['gutenberg_richter'].get('b_std', 0):.3f}",
                 "Mc": f"M{r['gutenberg_richter']['magnitude_completeness']:.1f}",
                 "a-değeri": f"{r['gutenberg_richter']['a_value']:.3f}",
-                "Beklenen Mmax": f"M{r['gutenberg_richter']['expected_max_magnitude']:.1f}",
+                "Beklenen Mmax": (f"M{_emmax:.1f}" if _emmax is not None
+                                  else "—"),
                 "Gözlenen Mmax": f"M{r['gutenberg_richter']['observed_max_magnitude']:.1f}",
             },
             "Poisson": {
                 "λ M≥3.0 (/gün)": f"{r['poisson']['lambda_m3_per_day']:.4f}",
                 "λ M≥4.0 (/gün)": f"{r['poisson']['lambda_m4_per_day']:.4f}",
                 "λ M≥4.0 zemin": f"{r['poisson'].get('lambda_m4_bg_per_day', 0):.4f}",
-                "P(M≥4.0) 7gün": f"%{r['poisson']['p_m4_7days_pct']:.1f}",
-                "P(M≥4.0) 30gün": f"%{r['poisson']['p_m4_30days_pct']:.1f}",
+                "P(M≥4.0) 7gün": f"%{_rp7:.1f}" if _rp7 is not None else "—",
+                "P(M≥4.0) 30gün": f"%{_rp30:.1f}" if _rp30 is not None else "—",
             },
             "Enerji": {
                 "Toplam Enerji": f"{r['energy']['total_energy_joules']:.2e} J",
@@ -2953,11 +3008,12 @@ class DepremGUI(ctk.CTk):
                     if field in self.risk_sections[section]:
                         lbl = self.risk_sections[section][field]
                         lbl.configure(text=val)
-                        c = self._risk_color(r['composite_risk_score'])
+                        c = (self._risk_color(r['composite_risk_score'])
+                             if _suf else COLOR_TEXT)
                         if field in ("Risk Skoru", "Risk Seviyesi"):
                             lbl.configure(text_color=c)
                         elif field == "Uyarı Seviyesi":
-                            lbl.configure(text_color=self._warn_color(p.get('warning_level', 'green')))
+                            lbl.configure(text_color=self._warn_color(p.get('warning_level')))
 
         # Fay segmentleri
         fault_segments = r.get("fault_risk", {}).get("segments", [])
@@ -3028,7 +3084,10 @@ class DepremGUI(ctk.CTk):
                 ctk.CTkLabel(self.rec_inner, text=freq, font=ctk.CTkFont(size=11),
                              text_color=COLOR_TEXT2).grid(row=idx + 1, column=2, padx=12, pady=2, sticky="w")
         else:
-            ctk.CTkLabel(self.rec_inner, text="Seçili aralıkta yeterli veri yok.",
+            _re_msg = (rec.get("error", "Seçili aralıkta yeterli veri yok.")
+                       if isinstance(rec, dict)
+                       else "Seçili aralıkta yeterli veri yok.")
+            ctk.CTkLabel(self.rec_inner, text=_re_msg,
                          font=ctk.CTkFont(size=11), text_color=COLOR_WARNING).grid(row=1, column=0, columnspan=3, pady=10)
 
     def _update_history(self):
@@ -3099,19 +3158,25 @@ class DepremGUI(ctk.CTk):
         p = self.prediction
         if not p: return
 
+        ci = p.get('composite_index')
+        pp = p.get('poisson_probability')
+        ec = p.get('expected_quake_count')
+        mm = p.get('max_likely_magnitude')
+
         color_map = {
-            "warning": self._warn_color(p.get('warning_level', 'green')),
-            "trend": self._warn_color(p.get('warning_level', 'green')),
+            "warning": self._warn_color(p.get('warning_level')),
+            "trend": self._warn_color(p.get('warning_level')),
             "b_trend": COLOR_DANGER if p.get('b_trend', 0) < -0.1 else
                        COLOR_SUCCESS if p.get('b_trend', 0) > 0.1 else COLOR_TEXT,
         }
 
         values = {
-            "warning": f"{self._warn_tr(p.get('warning_level', 'green'))} ({p.get('probability',0)*100:.1f}%)",
-            "probability": f"%{p.get('probability',0)*100:.1f}",
-            "poisson_prob": f"%{p.get('poisson_probability',0)*100:.1f}",
-            "expected_count": f"{p.get('expected_quake_count',0):.2f}",
-            "max_mag": f"M{p.get('max_likely_magnitude',0):.1f}",
+            "warning": self._warn_tr(p.get('warning_level')),
+            "aktivite": (f"{ci*100:.0f}/100 (boyutsuz)" if ci is not None
+                         else "—"),
+            "poisson_prob": f"%{pp*100:.1f}" if pp is not None else "—",
+            "expected_count": f"{ec:.2f}" if ec is not None else "—",
+            "max_mag": f"M{mm:.1f}" if mm is not None else "—",
             "trend": self._trend_tr(p.get('trend', '?')),
         }
 
@@ -3136,8 +3201,8 @@ class DepremGUI(ctk.CTk):
             bar = ctk.CTkProgressBar(cf, height=8, corner_radius=3,
                                       fg_color=COLOR_TRACK, progress_color=COLOR_ACCENT)
             bar.grid(row=0, column=1, padx=(0, 8), pady=6, sticky="ew")
-            bar.set(min(val, 1.0))
-            ctk.CTkLabel(cf, text=f"%{val*100:.0f}", font=ctk.CTkFont(size=9, weight="bold"),
+            bar.set(min(val, 1.0) if val is not None else 0.0)
+            ctk.CTkLabel(cf, text=("—" if val is None else f"%{val*100:.0f}"), font=ctk.CTkFont(size=9, weight="bold"),
                          text_color=COLOR_TEXT, width=35).grid(row=0, column=2, padx=(0, 10))
 
         # Artçı öngörüsü
@@ -3155,18 +3220,21 @@ class DepremGUI(ctk.CTk):
                         "orange" if aft["probability"] >= 0.2 else "green"))
             else:
                 for _k, _lbl in self.omori_labels.items():
-                    _lbl.configure(text="— (M≥4 ana şok yok)", text_color=COLOR_TEXT2)
+                    _lbl.configure(text="— (uygun ana şok yok: Mw≥5.9)", text_color=COLOR_TEXT2)
 
     def _update_sidebar(self):
         now_str = datetime.now().strftime("%d.%m.%Y %H:%M")
         self.sidebar_status.configure(text=f"Son güncelleme: {now_str}")
         if self.risk_report:
             s = self.risk_report["composite_risk_score"]
-            self.sidebar_bar.set(min(s, 1.0))
-            self.sidebar_bar.configure(progress_color=self._risk_color(s))
+            _ssuf = report_sufficient(self.risk_report)
+            self.sidebar_bar.set(min(s, 1.0) if _ssuf else 0.0)
+            _scolor = self._risk_color(s) if _ssuf else COLOR_TEXT2
+            self.sidebar_bar.configure(progress_color=_scolor)
             self.sidebar_risk_label.configure(
-                text=f"Risk: {s:.3f} ({self.risk_report['risk_level']})",
-                text_color=self._risk_color(s))
+                text=(f"Risk: {s:.3f} ({self.risk_report['risk_level']})"
+                      if _ssuf else "Risk: — (yetersiz veri)"),
+                text_color=_scolor)
         try:
             if hasattr(self, 'bg_switch') and self.bg_switch.get():
                 self.sidebar_bg_label.configure(
@@ -3204,16 +3272,20 @@ class DepremGUI(ctk.CTk):
 
     def _fetch_koeri_worker(self):
         try:
-            kquakes = fetch_koeri()
+            kres = fetch_koeri()
             count = 0
-            for kq in kquakes:
+            for kq in kres["quakes"]:
                 try:
                     insert_earthquake(kq, region_tag=kq.get("region_tag", "marmara"))
                     count += 1
                 except Exception:
                     pass
-            self._post_ui( lambda: self.act_status.configure(
-                text=f"KOERI: {count} yeni deprem kaydedildi.", text_color=COLOR_SUCCESS))
+            if kres["ok"]:
+                self._post_ui( lambda: self.act_status.configure(
+                    text=f"KOERI: {count} yeni deprem kaydedildi.", text_color=COLOR_SUCCESS))
+            else:
+                self._post_ui( lambda e=kres["error"]: self.act_status.configure(
+                    text=f"KOERI erişilemedi: {e}", text_color=COLOR_WARNING))
             self._post_ui(self.refresh_all)
         except Exception as e:
             _emsg = str(e)
@@ -3229,9 +3301,16 @@ class DepremGUI(ctk.CTk):
             r = get_comprehensive_risk_report(region="marmara")
             pred = EarthquakePredictor(region="marmara").predict_short_term()
             alerted = check_and_alert(r, pred)
-            msg = f"Alarm {'GÖNDERİLDİ' if alerted else 'gerek yok'} (risk: {r['composite_risk_score']:.3f})"
-            self._post_ui( lambda: self.act_status.configure(
-                text=msg, text_color=COLOR_SUCCESS if alerted else COLOR_TEXT))
+            _amsg_suf = report_sufficient(r)
+            _ast = getattr(check_and_alert, "last_status", "not_needed")
+            _albl = {"sent": "GÖNDERİLDİ", "send_failed": "GÖNDERİLEMEDİ (hata)",
+                     "cooldown": "beklemede (cooldown)", "disabled": "kapalı",
+                     "not_needed": "gerek yok"}.get(_ast, "?")
+            msg = (f"Alarm {_albl} (risk: {r['composite_risk_score']:.3f})"
+                   if _amsg_suf else
+                   f"Alarm {_albl} (veri yetersiz — risk belirtilmiyor)")
+            self._post_ui( lambda m=msg, ok=(_ast == "sent"): self.act_status.configure(
+                text=m, text_color=COLOR_SUCCESS if ok else (COLOR_DANGER if _ast == "send_failed" else COLOR_TEXT)))
         except Exception as e:
             _emsg = str(e)
             self._post_ui(lambda e=_emsg: self.act_status.configure(
@@ -3276,19 +3355,13 @@ class DepremGUI(ctk.CTk):
 
     def _test_api_worker(self, base, key):
         try:
-            import requests
-            from deprem_izleme.config import FETCH_TIMEOUT
-            headers = {"User-Agent": "DepremAnaliz-Marmara/1.0"}
-            if key:
-                headers["Authorization"] = f"Bearer {key}"
-            r = requests.get(base + "/api.php", params={"limit": 1},
-                             headers=headers, timeout=FETCH_TIMEOUT)
-            r.raise_for_status()
-            n = r.json().get("count", "?")
-            self._post_ui( lambda: self.api_status.configure(
-                text=f"Bağlantı OK (örnek kayıt: {n})", text_color=COLOR_SUCCESS))
+            from deprem_izleme.fetcher import probe_api
+            ok, msg = probe_api(base, key)
+            self._post_ui(lambda: self.api_status.configure(
+                text=msg, text_color=COLOR_SUCCESS if ok else COLOR_DANGER))
         except Exception as e:
-            _emsg = str(e)
+            from deprem_izleme.errors import redact
+            _emsg = redact(str(e))
             self._post_ui(lambda e=_emsg: self.api_status.configure(
                 text=f"Hata: {e}", text_color=COLOR_DANGER))
 
@@ -3318,7 +3391,8 @@ class DepremGUI(ctk.CTk):
                 text="Gönderildi!" if ok else "Hata - token/chat ID kontrol",
                 text_color=COLOR_SUCCESS if ok else COLOR_DANGER))
         except Exception as e:
-            _emsg = str(e)
+            from deprem_izleme.errors import redact
+            _emsg = redact(str(e))
             self._post_ui(lambda e=_emsg: self.tel_status.configure(
                 text=f"Hata: {e}", text_color=COLOR_DANGER))
 
@@ -3370,6 +3444,27 @@ class DepremGUI(ctk.CTk):
 
 
 def main():
+    try:
+        from deprem_izleme.db_state import ensure_setup
+        ensure_setup()
+    except Exception:
+        pass
+    try:
+        from deprem_izleme.db import check_db_compat
+        _ok, _msg = check_db_compat()
+        if not _ok:
+            try:
+                import tkinter as _tk
+                from tkinter import messagebox as _mb
+                _root = _tk.Tk()
+                _root.withdraw()
+                _mb.showerror("Veritabani uyumsuzlugu", _msg)
+                _root.destroy()
+            except Exception:
+                print(_msg)
+            return
+    except Exception:
+        pass
     app = DepremGUI()
     app.mainloop()
 

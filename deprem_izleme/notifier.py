@@ -8,6 +8,7 @@ import requests
 from datetime import datetime
 
 from deprem_izleme.config import TELEGRAM_ENABLED, TELEGRAM_RISK_THRESHOLD
+from deprem_izleme.aggregation import report_sufficient
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +53,15 @@ def save_telegram_config(token, chat_id):
 
 
 def _escape_md(text):
-    """Telegram Markdown (legacy) özel karakterlerini kaçır.
+    """Telegram HTML özel karakterlerini kaçır (tek standart: HTML).
 
-    Dinamik alanlar (yer adı vb.) alt çizgi/yıldız içerirse
-    Telegram mesajı reddeder; bu fonksiyon bunu önler.
+    Dinamik alanlar (yer adı vb.) <>& içerirse Telegram mesajı
+    reddeder; bu fonksiyon bunu önler. Tum sablonlar <b>/<i> kullanir.
     """
+    import html as _html
     if text is None:
         return "?"
-    return re.sub(r"([_*\[\]()~`>#+\-=|{}.!])", r"\\\1", str(text))
+    return _html.escape(str(text), quote=False)
 
 
 def _notif_settings():
@@ -133,8 +135,8 @@ def telegram_available():
     return bool(TELEGRAM_TOKEN and TELEGRAM_CHAT_ID)
 
 
-def send_telegram_message(message, parse_mode="Markdown"):
-    """Telegram üzerinden mesaj gönder."""
+def send_telegram_message(message, parse_mode="HTML"):
+    """Telegram üzerinden mesaj gönder (tek standart: HTML)."""
     if not TELEGRAM_ENABLED:
         logger.info("Telegram bildirimleri devre disi.")
         return False
@@ -152,12 +154,37 @@ def send_telegram_message(message, parse_mode="Markdown"):
     }
 
     try:
-        resp = requests.post(url, json=payload, timeout=10)
+        resp = requests.post(url, json=payload, timeout=10,
+                             allow_redirects=False)
+        if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
+            logger.error("Telegram yonlendirmesi izlenmedi (token korunumu).")
+            return False
         resp.raise_for_status()
         logger.info("Telegram mesaji gonderildi.")
         return True
+    except requests.HTTPError as e:
+        code = None
+        try:
+            code = e.response.status_code if e.response is not None else None
+        except Exception:
+            code = None
+        hint = {
+            400: "istek bicimi/chat ID hatali",
+            401: "bot token gecersiz",
+            429: "hiz siniri (biraz bekleyin)",
+            500: "Telegram sunucu hatasi",
+        }.get(code, "API hatasi")
+        logger.error(f"Telegram API hatasi (HTTP {code}): {hint}.")
+        return False
+    except requests.Timeout:
+        logger.error("Telegram baglanti zaman asimi (ag/tip: Timeout).")
+        return False
+    except requests.ConnectionError:
+        logger.error("Telegram baglantisi kurulamadi (ag/tip: ConnectionError).")
+        return False
     except Exception as e:
-        logger.error(f"Telegram mesaji gonderilemedi: {e}")
+        from deprem_izleme.errors import redact
+        logger.error(f"Telegram mesaji gonderilemedi: {redact(e)}")
         return False
 
 
@@ -175,44 +202,61 @@ def _warning_emoji(warning):
 def format_risk_alert(risk_report, prediction):
     """Risk alarm mesajini formatla."""
     now = datetime.now().strftime("%d.%m.%Y %H:%M")
-    risk_level = risk_report["risk_level"]
-    re = _risk_emoji(risk_level)
-    warning = prediction.get("warning_level", "green")
+    _nsuf0 = report_sufficient(risk_report)
+    risk_level = (risk_report["risk_level"] if _nsuf0
+                  else "— (yetersiz veri)")
+    re = _risk_emoji(risk_report["risk_level"]) if _nsuf0 else "⚪"
+    warning = prediction.get("warning_level")
     we = _warning_emoji(warning)
     wtr = {"red": "KIRMIZI", "orange": "TURUNCU",
-           "yellow": "SARI", "green": "YEŞİL"}.get(warning, warning.upper())
+           "yellow": "SARI", "green": "YEŞİL"}.get(warning, "—")
+    _pp = prediction.get("poisson_probability")
+    _pp_txt = f"%{_pp*100:.1f}" if _pp is not None else "— (yetersiz veri)"
+    _ci = prediction.get("composite_index")
+    _ci_txt = (f"{_ci*100:.0f}/100 (boyutsuz)" if _ci is not None
+               else "— (yetersiz veri)")
+    _rp7 = risk_report['poisson']['p_m4_7days_pct']
+    _rp30 = risk_report['poisson']['p_m4_30days_pct']
+    _rp7_txt = f"%{_rp7:.1f}" if _rp7 is not None else "— (yetersiz veri)"
+    _rp30_txt = f"%{_rp30:.1f}" if _rp30 is not None else "— (yetersiz veri)"
+    _rmmax = risk_report['gutenberg_richter']['expected_max_magnitude']
+    _rmmax_txt = f"M{_rmmax:.1f}" if _rmmax is not None else "— (yetersiz veri)"
+    _pmmax = prediction.get('max_likely_magnitude')
+    _pmmax_txt = f"M{_pmmax}" if _pmmax is not None else "— (yetersiz veri)"
+    _nscore_txt = (f"{risk_report['composite_risk_score']:.3f} ({risk_level})"
+                   if _nsuf0 else "— (yetersiz veri)")
 
     lines = [
-        f"{we} **DEPREM RISK RAPORU** {re}",
+        f"{we} <b>DEPREM RISK RAPORU</b> {re}",
         f"📍 {_escape_md(risk_report['region'].title())} Bolgesi",
         f"🕐 {now}",
         "",
-        f"**📊 Bilesik Risk Skoru:** {risk_report['composite_risk_score']:.3f} ({risk_level})",
-        f"**🔮 On-Tahmin Seviyesi:** {wtr} ({prediction['probability']:.1%})",
+        f"<b>📊 Bilesik Risk Skoru:</b> {_nscore_txt}",
+        f"<b>🔮 On-Tahmin Seviyesi:</b> {wtr} (Aktivite: {_ci_txt})",
         "",
-        "**📈 Gutenberg-Richter:**",
+        "<b>📈 Gutenberg-Richter:</b>",
         f" b-degeri: {risk_report['gutenberg_richter']['b_value']:.3f} (ref: 1.0)",
-        f" Beklenen Mmax: M{risk_report['gutenberg_richter']['expected_max_magnitude']:.1f}",
+        f" Beklenen Mmax: {_rmmax_txt}",
         f" Gozlenen Mmax: M{risk_report['gutenberg_richter']['observed_max_magnitude']:.1f}",
         "",
-        "**⚡ Poisson (M>=4.0):**",
-        f" 7 gunluk olasilik: %{risk_report['poisson']['p_m4_7days_pct']:.1f}",
-        f" 30 gunluk olasilik: %{risk_report['poisson']['p_m4_30days_pct']:.1f}",
+        "<b>⚡ Poisson (M&gt;=4.0, kalibre edilmemis):</b>",
+        f" 7 gunluk olasilik: {_rp7_txt}",
+        f" 30 gunluk olasilik: {_rp30_txt}",
         "",
-        "**🔋 Enerji:**",
+        "<b>🔋 Enerji:</b>",
         f" Toplam: {risk_report['energy']['total_energy_joules']:.2e} J",
         f" TNT esd.: {risk_report['energy']['total_energy_tnt_tons']:.1f} ton",
         "",
-        "**📉 Trend:**",
+        "<b>📉 Trend:</b>",
         f" b-trendi: {prediction.get('b_trend', 0):+.4f} (negatif = risk artisi)",
         f" Aktivite Z-skor: {prediction.get('anomaly_z_score', 0):.2f}",
         f" Yon: { {'increasing': 'ARTIYOR', 'stable': 'STABİL', 'decreasing': 'AZALIYOR'}.get(prediction.get('trend', 'stable'), '?') }",
         "",
-        f"**🔮 {wtr} seviyesinde uyari**",
-        f" {prediction['prediction_window_days']} gun icinde M>={prediction['min_magnitude_of_interest']} olasiligi: %{prediction['probability']*100:.1f}",
-        f" Beklenen en buyuk: M{prediction.get('max_likely_magnitude', '?')}",
+        f"<b>🔮 {wtr} seviyesinde uyari</b>",
+        f" {prediction['prediction_window_days']} gun icinde M&gt;={prediction['min_magnitude_of_interest']} olasiligi (Poisson): {_pp_txt}",
+        f" Beklenen en buyuk: {_pmmax_txt}",
         "",
-        "🤖 _Deprem Analiz - Marmara_",
+        "🤖 <i>Deprem Analiz - Marmara</i>",
     ]
     return "\n".join(lines)
 
@@ -221,20 +265,20 @@ def format_daily_summary(stats, quake_count_24h):
     """Gunluk ozet mesaj."""
     now = datetime.now().strftime("%d.%m.%Y %H:%M")
     lines = [
-        f"📋 **Gunluk Deprem Ozeti** \u2014 {now}",
+        f"📋 <b>Gunluk Deprem Ozeti</b> — {now}",
         f"📍 Marmara Bolgesi",
         "",
-        f"**Son 24 saat:** {quake_count_24h} deprem",
-        f"**Haftalik toplam:** {stats.get('quake_count', '?')} deprem",
-        f"**En buyuk:** M{stats.get('max_mag', '?')}",
-        f"**Ortalama:** M{stats.get('avg_mag', '?')}",
-        f"**Risk skoru:** {stats.get('risk_score', '?')}",
+        f"<b>Son 24 saat:</b> {quake_count_24h} deprem",
+        f"<b>Haftalik toplam:</b> {stats.get('quake_count', '?')} deprem",
+        f"<b>En buyuk:</b> M{stats.get('max_mag', '?')}",
+        f"<b>Ortalama:</b> M{stats.get('avg_mag', '?')}",
+        f"<b>Risk skoru:</b> {stats.get('risk_score', '?')}",
         "",
     ]
     if stats.get("max_mag_expected"):
         lines.append(f"📈 Beklenen Mmax: M{stats['max_mag_expected']}")
     lines.append("")
-    lines.append("🤖 _Deprem Analiz - Marmara_")
+    lines.append("🤖 <i>Deprem Analiz - Marmara</i>")
     return "\n".join(lines)
 
 
@@ -247,9 +291,16 @@ def check_and_alert(risk_report, prediction):
     - Uyarı seviyesi seçili düzeylerde (varsayılan kırmızı/turuncu)
     - risk ≥ 0.4 + anomali Z ≥ 2.5
     Aynı risk için bekleme süresi (varsayılan 6 sa) içinde tekrar gönderilmez.
+
+    Doner: True (gonderildi) / False (gonderilmedi).
+    Yan etki: check_and_alert.last_status — "sent" | "not_needed" |
+    "cooldown" | "send_failed" | "disabled". Cagiran "gerek yok" ile
+    "gonderilemedi"yi bu alanla ayirt eder.
     """
+    check_and_alert.last_status = "not_needed"
     s = _notif_settings()
     if not s.get("telegram_enabled", True):
+        check_and_alert.last_status = "disabled"
         return False
 
     try:
@@ -264,7 +315,7 @@ def check_and_alert(risk_report, prediction):
         cooldown_h = 0
 
     risk_score = risk_report["composite_risk_score"]
-    warning = prediction.get("warning_level", "green")
+    warning = prediction.get("warning_level") or "green"
 
     should_alert = False
     reason = ""
@@ -280,6 +331,7 @@ def check_and_alert(risk_report, prediction):
 
     if not should_alert:
         logger.info(f"Risk skoru {risk_score:.3f}, esik alti. Uyari gerekmez.")
+        check_and_alert.last_status = "not_needed"
         return False
 
     if cooldown_h > 0:
@@ -287,6 +339,7 @@ def check_and_alert(risk_report, prediction):
         if last and (datetime.now().timestamp() - last) < cooldown_h * 3600:
             logger.info(f"Uyari beklemede (cooldown): {reason}")
             log_notification("risk", reason + " (beklemede: cooldown)", "beklemede")
+            check_and_alert.last_status = "cooldown"
             return False
 
     msg = format_risk_alert(risk_report, prediction)
@@ -294,9 +347,14 @@ def check_and_alert(risk_report, prediction):
     log_notification("risk", reason, success)
     if success:
         logger.info(f"TELEGRAM UYARISI GONDERILDI — {reason}")
+        check_and_alert.last_status = "sent"
     else:
         logger.warning(f"Telegram uyarisi gonderilemedi — {reason}")
+        check_and_alert.last_status = "send_failed"
     return success
+
+
+check_and_alert.last_status = "not_needed"
 
 
 def send_test_message():
@@ -309,10 +367,10 @@ def send_test_message():
         return False
 
     msg = (
-        "🧪 **Deprem Analiz - Marmara Test**\n\n"
+        "🧪 <b>Deprem Analiz - Marmara Test</b>\n\n"
         "Merhaba! Bu bir test mesajidir.\n"
         "Sistem calisiyor ve bildirimler aktif.\n\n"
-        "🤖 _Deprem Analiz - Marmara_"
+        "🤖 <i>Deprem Analiz - Marmara</i>"
     )
     ok = send_telegram_message(msg)
     log_notification("test", "manuel test", ok)

@@ -8,9 +8,7 @@ from collections import deque
 
 from deprem_izleme.db import get_earthquakes
 from deprem_izleme.aggregation import (
-    calculate_b_value, estimate_lambda, poisson_probability,
-    seismic_energy_joules, detect_anomalous_activity,
-    _compute_risk_score
+    calculate_b_value, seismic_energy_joules, detect_anomalous_activity,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,11 +34,14 @@ class EarthquakePredictor:
         Kısa vadeli (1-30 gün) deprem olasılık tahmini.
 
         Döner: {
-            "probability": 0.XX,
-            "expected_count": N,
-            "max_likely_magnitude": M,
+            "composite_index": 0-1 arasi boyutsuz gosterge (kalibre edilmemis)
+                               veya None (yetersiz veri),
+            "poisson_probability": kalibre edilmemis Poisson olasiligi
+                                   veya None (yetersiz veri),
+            "expected_count": N veya None,
+            "max_likely_magnitude": M veya None,
             "risk_trend": "increasing|stable|decreasing",
-            "warning_level": "green|yellow|orange|red"
+            "warning_level": "green|yellow|orange|red" veya None (yetersiz veri)
         }
         """
         now = datetime.now()
@@ -65,16 +66,16 @@ class EarthquakePredictor:
         mags_90d = [q["magnitude"] for q in quakes_90d if q.get("magnitude")]
         mags_7d = [q["magnitude"] for q in quakes_7d if q.get("magnitude")]
 
-        # --- 1. Poisson bazlı olasılık ---
-        # Gözlenen M≥4 yoksa hız 0 çıkar; yedek GR dışdeğerlemesi kullanılır.
-        from deprem_izleme.aggregation import gr_rate_m4
-        b_30, a_30, mc_30 = calculate_b_value(mags_30d)
-        lambda_moi = estimate_lambda(quakes_90d, min_mag=min_mag_of_interest)
-        if lambda_moi <= 0:
-            lambda_moi = gr_rate_m4(a_30, b_30, 30.0)
-        poisson_prob = poisson_probability(lambda_moi, days_ahead)
+        # --- 1. Poisson bileşeni: TEK servis (raporla birebir aynı) ---
+        from deprem_izleme.aggregation import forecast_poisson
+        fc = forecast_poisson(quakes_30d, threshold=min_mag_of_interest,
+                              forecast_days=days_ahead, t_obs_days=30.0,
+                              region=self.region)
+        p_poisson = fc["p_forecast"]  # None: yetersiz veri
+        suff = fc["sufficient"]
 
-        # --- 2. Gutenberg-Richter trend ---
+        # --- 2. Gutenberg-Richter trend (servis a/b'yi yeniden kullan) ---
+        b_30, a_30, mc_30 = fc["b_value"], fc["a_value"], fc["mc"]
         b_90, a_90, mc_90 = calculate_b_value(mags_90d)
 
         # b-değeri trendi: düşüş = stress artışı
@@ -112,8 +113,8 @@ class EarthquakePredictor:
             "foreshock": 0.15,
         }
 
-        # Her bileşeni normalize et
-        p_poisson = poisson_prob
+        # Her bileşeni normalize et (0-1)
+        p_poisson = p_poisson if p_poisson is not None else 0.0
 
         # b trend: -0.2 ve altı = riskli
         b_trend_score = max(0, min(1, (-b_trend * 5)))
@@ -127,16 +128,23 @@ class EarthquakePredictor:
         # foreshock ratio
         foreshock_score = max(0, min(1, foreshock_ratio * 3))
 
-        composite_prob = (
-            weights["poisson"] * p_poisson +
-            weights["b_trend"] * b_trend_score +
-            weights["energy_ratio"] * energy_score +
-            weights["z_score"] * z_score_norm +
-            weights["foreshock"] * foreshock_score
-        )
+        if suff:
+            composite_index = (
+                weights["poisson"] * p_poisson +
+                weights["b_trend"] * b_trend_score +
+                weights["energy_ratio"] * energy_score +
+                weights["z_score"] * z_score_norm +
+                weights["foreshock"] * foreshock_score
+            )
+        else:
+            # Yetersiz veri: uydurma skor yok (None → "— / yetersiz veri")
+            composite_index = None
 
-        # Beklenen maksimum magnitüd
-        max_likely_mag = max(1.5, min(7.5, (a_30 / max(b_30, 0.01)) if b_30 > 0 else 4.0))
+        # Beklenen maksimum magnitüd (yalnızca yeterli veride)
+        if suff and b_30 > 0:
+            max_likely_mag = max(1.5, min(7.5, a_30 / max(b_30, 0.01)))
+        else:
+            max_likely_mag = None
 
         # Trend yönü
         if b_trend < -0.1 and energy_ratio > 1.5:
@@ -146,24 +154,35 @@ class EarthquakePredictor:
         else:
             trend = "stable"
 
-        # Uyarı seviyesi
-        if composite_prob >= 0.65 or z_score >= 4.0:
+        # Uyarı seviyesi (yalnızca yeterli veride; yoksa None)
+        if not suff:
+            warning = None
+        elif composite_index >= 0.65 or z_score >= 4.0:
             warning = "red"
-        elif composite_prob >= 0.45 or z_score >= 2.5:
+        elif composite_index >= 0.45 or z_score >= 2.5:
             warning = "orange"
-        elif composite_prob >= 0.25:
+        elif composite_index >= 0.25:
             warning = "yellow"
         else:
             warning = "green"
+
+        exp_count = (round(fc["lambda_eff"] * days_ahead, 2)
+                     if suff else None)
 
         return {
             "prediction_window_days": days_ahead,
             "min_magnitude_of_interest": min_mag_of_interest,
             "no_data": len(quakes_30d) < 5,
-            "probability": round(composite_prob, 4),
-            "poisson_probability": round(p_poisson, 4),
-            "expected_quake_count": round(lambda_moi * days_ahead, 2),
-            "max_likely_magnitude": round(max_likely_mag, 2),
+            "sufficient": suff,
+            "sufficiency": fc["sufficiency"],
+            "composite_index": (round(composite_index, 4)
+                                if composite_index is not None else None),
+            "poisson_probability": (round(p_poisson, 4)
+                                    if fc["p_forecast"] is not None else None),
+            "poisson_source": fc["rate_source"],
+            "expected_quake_count": exp_count,
+            "max_likely_magnitude": (round(max_likely_mag, 2)
+                                     if max_likely_mag is not None else None),
             "trend": trend,
             "warning_level": warning,
             "b_trend": round(b_trend, 4),
@@ -171,7 +190,8 @@ class EarthquakePredictor:
             "anomaly_z_score": round(z_score, 3),
             "foreshock_ratio": round(foreshock_ratio, 4),
             "components": {
-                "poisson": round(p_poisson, 4),
+                "poisson": (round(p_poisson, 4)
+                            if fc["p_forecast"] is not None else None),
                 "b_trend_score": round(b_trend_score, 4),
                 "energy_score": round(energy_score, 4),
                 "z_score": round(z_score_norm, 4),

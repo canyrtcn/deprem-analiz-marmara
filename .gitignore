@@ -8,7 +8,20 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+
+# Ortam dosyalari (sahte-ornek haric hepsi dislanir)
 .env
+**/.env*
+!.env.example
+*.bak
+*.orig
+*.tmp
+*.maint_lock
+data/active_db.json
+data/maintenance.json
+data/snapshot_*.json
+data/*_v2.db
+data/test_*.db
 
 # Uygulama verisi (yerelde üretilir, depoya girmez)
 data/*.db
@@ -16,6 +29,7 @@ data/*.db-wal
 data/*.db-shm
 data/*.db-journal
 data/settings.json
+!data/settings.example.json
 data/notifications.jsonl
 
 # Ekran görüntüleri ve geçici dosyalar

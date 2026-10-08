@@ -100,7 +100,15 @@ def main():
 def make_release_package():
     """GitHub Release'e eklenecek zip'i üret (updater bunu indirir)."""
     import shutil
+    import subprocess
     import tempfile
+    # Release kapısı: gizli-bilgi taraması temiz değilse paket üretilmez.
+    chk = subprocess.run([sys.executable, "scripts/check_secrets.py"],
+                         capture_output=True, text=True)
+    print(chk.stdout.strip().splitlines()[-1] if chk.stdout.strip() else "")
+    if chk.returncode != 0:
+        print("Release DURDURULDU: gizli-bilgi taramasi bulgu verdi.")
+        return 1
     dist_dir = _dist_dir()
     zip_base = os.path.join(HERE, "dist", "deprem-analiz-marmara-win64")
     # data/ pakete GİRMEZ (kullanıcı verisi); exe + _internal girer
