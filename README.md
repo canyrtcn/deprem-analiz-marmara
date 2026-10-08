@@ -7,7 +7,7 @@
 ![Lisans](https://img.shields.io/badge/License-MIT-43A047?style=flat-square)
 ![Arayüz](https://img.shields.io/badge/UI-CustomTkinter-495057?style=flat-square)
 ![Veritabanı](https://img.shields.io/badge/Database-SQLite-003B57?style=flat-square)
-[![Son sürüm](https://img.shields.io/badge/Release-v1.0.1-6F42C1?style=flat-square)](https://github.com/canyrtcn/deprem-analiz-marmara/releases/tag/v1.0.1)
+[![Son sürüm](https://img.shields.io/badge/Release-v1.0.2-6F42C1?style=flat-square)](https://github.com/canyrtcn/deprem-analiz-marmara/releases/tag/v1.0.2)
 
 **Deprem Analiz — Marmara**, Python, CustomTkinter ve SQLite ile geliştirilmiş açık kaynaklı bir Windows masaüstü uygulamasıdır. Deprem kayıtlarını yerel olarak saklar, geçmiş etkinliği analiz eder ve isteğe bağlı Telegram bildirimleri sunar.
 
@@ -38,7 +38,7 @@
 
 ### Windows için hazır paket
 
-**[Son sürüm: v1.0.1 — GitHub Releases](https://github.com/canyrtcn/deprem-analiz-marmara/releases/tag/v1.0.1)**
+**[Son sürüm: v1.0.2 — GitHub Releases](https://github.com/canyrtcn/deprem-analiz-marmara/releases/tag/v1.0.2)**
 
 1. `deprem-analiz-marmara-win64.zip` paketini indirin.
 2. ZIP arşivini bilgisayarınızda yazma izniniz olan bir klasöre çıkarın.
