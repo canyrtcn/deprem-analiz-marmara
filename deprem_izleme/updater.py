@@ -108,17 +108,21 @@ def _app_dir():
     return BASE_DIR
 
 
-def download_package(url, timeout=DOWNLOAD_TIMEOUT):
+def download_package(url, timeout=DOWNLOAD_TIMEOUT, max_mb=500):
     """Release zip'ini indir, dosya yolunu döndür (hata: None)."""
     try:
         tmp = tempfile.mkdtemp(prefix="deprem_update_")
         dst = os.path.join(tmp, UPDATE_ASSET_NAME)
+        size = 0
         with requests.get(url, stream=True, timeout=timeout,
                           headers={"User-Agent": "DepremAnaliz-Marmara-Updater"}) as r:
             r.raise_for_status()
             with open(dst, "wb") as f:
                 for chunk in r.iter_content(chunk_size=1024 * 256):
                     if chunk:
+                        size += len(chunk)
+                        if size > max_mb * 1024 * 1024:
+                            raise RuntimeError("Paket boyutu sınırı aştı")
                         f.write(chunk)
         return dst
     except Exception as e:
@@ -126,12 +130,21 @@ def download_package(url, timeout=DOWNLOAD_TIMEOUT):
         return None
 
 
+def _safe_extract(zip_path, dest):
+    """Zip-slip korumalı çıkarma (kötü niyetli yolları reddeder)."""
+    with zipfile.ZipFile(zip_path, "r") as z:
+        for member in z.infolist():
+            target = os.path.normpath(os.path.join(dest, member.filename))
+            if not target.startswith(os.path.abspath(dest) + os.sep):
+                raise RuntimeError(f"Güvensiz paket yolu: {member.filename}")
+        z.extractall(dest)
+
+
 def stage_package(zip_path):
     """Zip'i aç, içindeki uygulama klasörünü bul. (yol | None)."""
     try:
         tmp = tempfile.mkdtemp(prefix="deprem_stage_")
-        with zipfile.ZipFile(zip_path, "r") as z:
-            z.extractall(tmp)
+        _safe_extract(zip_path, tmp)
         # Beklenen: tek klasör içinde exe; değilse zip kökü
         entries = [os.path.join(tmp, e) for e in os.listdir(tmp)]
         dirs = [e for e in entries if os.path.isdir(e)]
