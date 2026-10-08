@@ -73,7 +73,7 @@ def main():
             rows.append((bat, "PASS" if ok else "FAIL",
                          f"rc={p.returncode} +{npass}/-{nfail}"))
             if not ok:
-                tail = "\n".join(out.splitlines()[-15:])
+                tail = "\n".join(out.splitlines()[-40:])
                 print(f"--- {bat} CIKTI-SONU ---\n{tail}\n--- SON ---")
             total_pass += npass
             total_fail += nfail + (0 if ok else 1)

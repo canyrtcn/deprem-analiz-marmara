@@ -105,8 +105,9 @@ h1 = content_hash_v1("2026-09-01 10:00:00", 40.7, 28.5, 10.0, 1.5, None, None, "
 check("M1: hash v1 prefix + stabil",
       h1 == content_hash_v1("2026-09-01 10:00:00", 40.7, 28.5, 10.0, 1.5, None, None, "unknown"))
 
-# 5. migrate canli reddi (src ve dst)
+# 5. migrate canli reddi (src ve dst; dosya ACILMAZ, boyut okunmaz)
 LIVE = _os.path.join(REPO_ROOT, "data/depremler.db")
+_live_before = (os.path.exists(LIVE), os.path.getsize(LIVE) if os.path.exists(LIVE) else None)
 ref = 0
 try:
     migrate_v1_to_v2(LIVE, os.path.join(HERE, "k3m1_out.db"))
@@ -117,8 +118,9 @@ try:
 except RuntimeError as e:
     ref += 1
 check("M1: canli src/dst reddedilir", ref == 2)
-check("M1: canli DB boyutu degismedi",
-      os.path.getsize(LIVE) == 40960)
+_live_after = (os.path.exists(LIVE), os.path.getsize(LIVE) if os.path.exists(LIVE) else None)
+check("M1: canli dosya durumu degismedi (yoksa yok, varsa ayni)",
+      _live_before == _live_after, _live_after)
 
 # 6. sentetik goc (gercek fonksiyon) + katalog paritesi
 DST = os.path.join(HERE, "k3m1_work.db")
