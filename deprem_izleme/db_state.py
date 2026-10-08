@@ -11,7 +11,7 @@ import json
 import os
 
 from deprem_izleme.config import MAIN_DB, DATA_DIR
-from deprem_izleme.db import MaintenanceActiveError
+from deprem_izleme.db import MaintenanceActiveError, maintenance_hold
 
 STATE_FILE = os.path.join(DATA_DIR, "maintenance.json")
 ACTIVE_FILE = os.path.join(DATA_DIR, "active_db.json")
@@ -68,38 +68,61 @@ def get_state():
     return "bilinmiyor", "gecersiz-durum-degeri"
 
 
-def get_active_db():
-    """Aktif DB yolu (yoksa MAIN_DB)."""
-    d = _read_json(ACTIVE_FILE)
-    if d is None:
+def get_active_db(strict=False):
+    """Aktif DB yolu (yoksa MAIN_DB).
+
+    strict=True: dosya VAR ama bozuk/gecersizse sessiz fallback YOK,
+    MaintenanceActiveError yukselir (yazma yollari fail-closed).
+    Okuma yollari strict=False ile legacy varsayilani korur.
+    """
+    if not os.path.exists(ACTIVE_FILE):
         return MAIN_DB
-    p = d.get("active")
-    return p if p else MAIN_DB
+    d = _read_json(ACTIVE_FILE)
+    p = (d or {}).get("active") if isinstance(d, dict) else None
+    if p:
+        return p
+    if strict:
+        raise MaintenanceActiveError(
+            "aktif DB durumu okunamadi (bozuk dosya) — yazma kapali")
+    try:
+        import logging as _lg
+        _lg.getLogger(__name__).warning(
+            "active_db.json bozuk; salt-okunur legacy varsayilani kullaniliyor")
+    except Exception:
+        pass
+    return MAIN_DB
 
 
-def set_frozen(reason=""):
-    _write_json_atomic(STATE_FILE, {"state": "frozen", "reason": reason})
-    st, _ = get_state()
-    if st != "frozen":
-        raise RuntimeError("frozen yazilamadi (dogrulama okumasi tutmadi)")
+def set_frozen(reason="", _lock_path=None):
+    """frozen gecisi: surecler-arasi bakim kilidi altinda atomik yaz+dogla."""
+    with maintenance_hold(_lock_path or MAIN_DB, timeout_s=30):
+        _write_json_atomic(STATE_FILE, {"state": "frozen", "reason": reason})
+        st, _ = get_state()
+        if st != "frozen":
+            raise RuntimeError("frozen yazilamadi (dogrulama okumasi tutmadi)")
 
 
-def set_normal():
-    _write_json_atomic(STATE_FILE, {"state": "normal"})
-    st, _ = get_state()
-    if st != "normal":
-        raise RuntimeError("normal yazilamadi (dogrulama okumasi tutmadi)")
+def set_normal(_lock_path=None):
+    """normal gecisi: surecler-arasi bakim kilidi altinda atomik yaz+dogla."""
+    with maintenance_hold(_lock_path or MAIN_DB, timeout_s=30):
+        _write_json_atomic(STATE_FILE, {"state": "normal"})
+        st, _ = get_state()
+        if st != "normal":
+            raise RuntimeError("normal yazilamadi (dogrulama okumasi tutmadi)")
 
 
 def check_writable():
     """Yazma onkosulu: frozen/celiskili/bilinmeyen -> MaintenanceActiveError.
 
-    active hedef v2 degilken frozen olmak da engeldir (celiski).
+    frozen her durumda engeldir. Kurulum sonrasi kayip/bozuk durum
+    dosyalari ile bozuk aktif-DB dosyasi da yazmayi engeller
+    (fail-closed; sessiz normal donusu yok).
     """
     st, why = get_state()
     if st != "normal":
         raise MaintenanceActiveError(
             "yazma kapali (bakim durumu: %s)" % st)
+    get_active_db(strict=True)  # bozuk hedef dosyasi da yazmayi engeller
     return True
 
 
