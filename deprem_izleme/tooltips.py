@@ -13,7 +13,9 @@ TOOLTIPS = {
         "Dünya ortalaması ~1.0'dır. Düşük b-değeri,\n"
         "bölgede büyük bir deprem öncesi stress\n"
         "birikimini işaret edebilir.\n\n"
-        "Kaynak: Schorlemmer et al. (2005), Nature"
+        "Kaynak: Schorlemmer et al. (2005), Nature\n\n"
+        "*: 10'dan az depremde b = 1.0 varsayılanı\n"
+        "kullanılır (ölçüm değil)."
     ),
     "a-değeri": (
         "Gutenberg-Richter a-değeri\n\n"

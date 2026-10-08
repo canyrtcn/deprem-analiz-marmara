@@ -2450,7 +2450,10 @@ class DepremGUI(ctk.CTk):
         self.risk_chip.configure(fg_color=color)
         self.risk_gauge_level.configure(text=r['risk_level'])
 
-        self.metric_widgets["b-değeri"].configure(text=f"{r['gutenberg_richter']['b_value']:.3f}")
+        self.metric_widgets["b-değeri"].configure(
+            text=(f"{r['gutenberg_richter']['b_value']:.3f}"
+                  if r.get("quake_count", 0) >= 10 else
+                  f"{r['gutenberg_richter']['b_value']:.3f}*"))
         self.metric_widgets["M≥4.0 7g"].configure(text=f"%{r['poisson']['p_m4_7days_pct']:.1f}")
         st = self.stats_data
         self.metric_widgets["Son 24h"].configure(text=f"{st.get('son_24h', 0)}")
