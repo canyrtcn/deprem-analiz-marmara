@@ -2709,7 +2709,20 @@ class DepremGUI(ctk.CTk):
                      text_color=COLOR_TEXT2).pack(expand=True, pady=20)
 
     def _update_charts(self):
-        """Grafikleri güncelle - figür arka planda kurulur, canvas ana thread'de."""
+        """Grafikleri güncelle - figür arka planda kurulur, canvas ana thread'de.
+
+        Veri + filtre değişmediyse pahalı yeniden çizim atlanır.
+        """
+        try:
+            eqs = getattr(self, "earthquakes", []) or []
+            sig = (len(eqs),
+                   eqs[0]["timestamp"] if eqs and eqs[0].get("timestamp") else 0,
+                   self.current_time_filter)
+            if sig == getattr(self, "_charts_sig", None):
+                return
+            self._charts_sig = sig
+        except Exception:
+            pass
         threading.Thread(target=self._charts_worker, daemon=True).start()
 
     def _charts_worker(self):
