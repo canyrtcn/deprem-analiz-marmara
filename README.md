@@ -9,7 +9,7 @@
 ![Veritabanı](https://img.shields.io/badge/Database-SQLite-003B57?style=flat-square)
 [![Son sürüm](https://img.shields.io/badge/Release-v1.0.1-6F42C1?style=flat-square)](https://github.com/canyrtcn/deprem-analiz-marmara/releases/tag/v1.0.1)
 
-Python, CustomTkinter ve SQLite tabanlı uygulama; deprem kayıtlarını yerel olarak saklar, harita ve grafikler üzerinden sunar, uygun veri koşullarında istatistiksel göstergeler hesaplar ve isteğe bağlı Telegram bildirimleri sağlar.
+MIT lisanslı, açık kaynaklı bu Python, CustomTkinter ve SQLite tabanlı uygulama; deprem kayıtlarını yerel olarak saklar, harita ve grafikler üzerinden sunar, uygun veri koşullarında istatistiksel göstergeler hesaplar ve isteğe bağlı Telegram bildirimleri sağlar.
 
 > [!IMPORTANT]
 > **Deprem erken uyarı sistemi değildir.** Depremlerin ne zaman, nerede veya hangi büyüklükte gerçekleşeceğini güvenilir biçimde öngördüğü iddia edilmez. Olasılık olarak gösterilen değerler, varsayımlara bağlı **kalibre edilmemiş model çıktılarıdır**; bileşik aktivite/risk puanları ise olasılık değildir. Acil durumlarda ve resmî bilgilendirmelerde [AFAD](https://www.afad.gov.tr/) ile [Kandilli Rasathanesi](https://www.koeri.boun.edu.tr/) duyurularını esas alın.
@@ -47,8 +47,6 @@ Haritadaki fay çizgileri bilgilendirme amaçlı sayısallaştırılmış/şemat
 4. İlk açılışta sunulan API/ayarlar rehberini izleyin. API anahtarı zorunlu değildir; anahtarsız kullanımda sağlayıcının kota sınırları uygulanabilir.
 
 > **Sürüm yükseltirken:** Mevcut `data/` klasörünüzü yedekleyin. Yeni paketi açtıktan sonra, verilerinizin yeni uygulama klasöründe korunmasını sağlayın; eski klasörü veya kişisel veri dosyalarını kontrol etmeden silmeyin. Release ZIP'i kullanıcı verilerini içermez.
-
-**Not:** Depo şu anda özel (*private*) erişimdedir. Release bağlantısını açmak için depoya erişim yetkisi gerekebilir.
 
 ### Kaynak koddan çalıştırma
 
@@ -96,7 +94,7 @@ Bot tokenını `--token` gibi komut satırı parametrelerine yazmayın. Gönderi
 ## Güncelleme ve bilinen sınırlamalar
 
 - **v1.0.1'de otomatik güncelleme indirme/kurma devre dışıdır.** Yeni sürüm denetimi bilgi vermek içindir. Yeni paketi GitHub Releases üzerinden elle edinin.
-- Depo özel erişimdeyken güncelleme denetimi başarısız olabilir veya “Denetlenemedi” gösterebilir; bu, yeni sürümün bulunmadığının kanıtı değildir.
+- GitHub Releases erişilemiyorsa sürüm denetimi “Denetlenemedi” gösterebilir; bu, yeni sürümün bulunmadığının kanıtı değildir.
 - Mevcut dağıtım **v1 SQLite şemasıyla** çalışır. Yeni olay/gözlem/sürüm veritabanı mimarisine canlı geçiş bu sürümde etkin değildir.
 - Bazı gelişmiş istatistiksel modüllerin ve veri akışlarının bilinen sınırlamaları bulunmaktadır; çıktılar bilimsel uzman değerlendirmesinin yerine geçmez.
 - Uygulama, mevcut kayıtları ağ bağlantısı olmadan görüntüleyebilir; yeni deprem verilerinin indirilmesi için ilgili kaynaklara bağlantı gerekir.
@@ -137,5 +135,5 @@ Bu atıflar uygulamanın sonuçlarının ilgili çalışmalarda doğrulandığı
 
 ## Lisans
 
-Kaynak kod [MIT Lisansı](LICENSE) altında lisanslanmıştır. Depo şu anda özel erişimdedir.
+Kaynak kod [MIT Lisansı](LICENSE) altında açık kaynak olarak sunulmaktadır.
 
