@@ -62,6 +62,19 @@ OMORI_P = 1.0    # tipik üs
 # Kullanıcı ayarları (API anahtarı, görünüm, telegram) - data/settings.json
 SETTINGS_PATH = os.path.join(DATA_DIR, "settings.json")
 _settings_cache = None
+_settings_lock = None
+
+
+def _get_lock():
+    """Ayar okuma/yazma kilidi (eşzamanlı kayıt kaybını önler)."""
+    global _settings_lock
+    if _settings_lock is None:
+        try:
+            import threading as _th
+            _settings_lock = _th.Lock()
+        except Exception:
+            pass
+    return _settings_lock
 
 DEFAULT_SETTINGS = {
     "api_base": API_BASE,
@@ -85,36 +98,67 @@ def load_settings():
     global _settings_cache
     if _settings_cache is not None:
         return dict(_settings_cache)
-    s = dict(DEFAULT_SETTINGS)
+    lock = _get_lock()
     try:
-        if os.path.exists(SETTINGS_PATH):
-            with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
-                disk = json.load(f)
-            if isinstance(disk, dict):
-                for k in s:
-                    if disk.get(k) is not None:
-                        s[k] = disk[k]
-    except Exception:
-        pass
-    _settings_cache = dict(s)
-    return dict(s)
+        if lock:
+            lock.acquire()
+        s = dict(DEFAULT_SETTINGS)
+        try:
+            if os.path.exists(SETTINGS_PATH):
+                with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
+                    disk = json.load(f)
+                if isinstance(disk, dict):
+                    for k in s:
+                        if disk.get(k) is not None:
+                            s[k] = disk[k]
+        except Exception:
+            pass
+        _settings_cache = dict(s)
+        return dict(s)
+    finally:
+        try:
+            if lock:
+                lock.release()
+        except Exception:
+            pass
 
 
 def save_settings(patch):
     """Ayarları diske yazar (sadece verilen anahtarlar)."""
     global _settings_cache
-    s = load_settings()
-    for k, v in (patch or {}).items():
-        if k in DEFAULT_SETTINGS and v is not None:
-            s[k] = v
+    lock = _get_lock()
     try:
-        os.makedirs(os.path.dirname(SETTINGS_PATH), exist_ok=True)
-        with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
-            json.dump(s, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
-    _settings_cache = dict(s)
-    return dict(s)
+        if lock:
+            lock.acquire()
+        # Kilidin İÇİNDE taze oku (önbellek bayat olabilir)
+        s = dict(DEFAULT_SETTINGS)
+        try:
+            if os.path.exists(SETTINGS_PATH):
+                with open(SETTINGS_PATH, "r", encoding="utf-8") as f:
+                    disk = json.load(f)
+                if isinstance(disk, dict):
+                    for k in s:
+                        if disk.get(k) is not None:
+                            s[k] = disk[k]
+        except Exception:
+            pass
+        for k, v in (patch or {}).items():
+            if k in DEFAULT_SETTINGS and v is not None:
+                s[k] = v
+        try:
+            os.makedirs(os.path.dirname(SETTINGS_PATH), exist_ok=True)
+            with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
+                json.dump(s, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+        _settings_cache = dict(s)
+        return dict(s)
+    finally:
+        try:
+            if lock:
+                lock.release()
+        except Exception:
+            pass
 
 
 def clean_api_base(value):
