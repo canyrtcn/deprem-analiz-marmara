@@ -198,7 +198,12 @@ def cmd_alert(args):
 
     alerted = check_and_alert(risk_report, prediction)
     if not alerted:
-        print(f"! Risk skoru esik alti ({risk_report['composite_risk_score']:.3f} < {risk_report.get('threshold', 0.6)}).")
+        try:
+            from deprem_izleme.config import load_settings as _ls
+            _thr = float(_ls().get("telegram_threshold", 0.6) or 0.6)
+        except Exception:
+            _thr = 0.6
+        print(f"! Risk skoru esik alti ({risk_report['composite_risk_score']:.3f} < {_thr:.2f}).")
         msg = format_risk_alert(risk_report, prediction)
         print("\n--- Mesaj önizleme ---")
         print(msg)
@@ -221,6 +226,13 @@ def cmd_telegram_setup(args):
 
     os.environ["DEPREM_TELEGRAM_TOKEN"] = token
     os.environ["DEPREM_TELEGRAM_CHAT_ID"] = chat_id
+
+    # Kalıcı kaydet (yoksa yeniden başlatınca unutulur)
+    try:
+        from deprem_izleme.notifier import save_telegram_config
+        save_telegram_config(token, chat_id)
+    except Exception:
+        pass
 
     # Test
     send_telegram_message("🧪 **Deprem Analiz - Marmara**\n\nTelegram bildirimleri aktif!\nAyarlar basariyla tamamlandi.")
@@ -308,7 +320,7 @@ def main():
         parser.print_help()
         print()
         print("=" * 50)
-        print("  DEPREM IZLEME SISTEMI")
+        print("  DEPREM ANALİZ - MARMARA")
         print("  Son durum raporu hazirlaniyor...")
         print("=" * 50)
         try:

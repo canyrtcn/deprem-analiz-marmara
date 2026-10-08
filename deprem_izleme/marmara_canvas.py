@@ -271,6 +271,10 @@ class MarmaraMap(tk.Canvas):
         x1 = self._cx + self._span_x / 2
 
         # deniz
+        # NOT: SEA_RING doğuda ~29.87'de biter (üretim kutusu sınırı);
+        # İzmit Körfezi'nin iç kısmında su dolgusu eksik kalır. Kıyı
+        # çizgileri tamdır; halka ancak kaynak veriyle (assets/make_sea*.py
+        # + kıyı geojson) yeniden üretilerek genişletilmelidir.
         sea_xy = []
         for lon, lat in SEA_RING:
             px, py = self.project(lon, lat)
