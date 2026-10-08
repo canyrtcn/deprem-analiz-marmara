@@ -168,7 +168,15 @@ def clean_api_base(value):
         return API_BASE
     if "://" not in v:
         v = "https://" + v
-    if v.split("://", 1)[0].lower() not in ("http", "https"):
+    scheme, _, rest = v.partition("://")
+    if scheme.lower() not in ("http", "https"):
+        return API_BASE
+    # Host gerçekten adres olmalı (şema-aldatmacası/boş host elenir)
+    host = rest.split("/", 1)[0].split("?", 1)[0]
+    if not host or any(ch.isspace() for ch in host) or "@" in host:
+        return API_BASE
+    bare = host.split(":")[0].lower()
+    if bare != "localhost" and not bare.startswith("[") and "." not in bare:
         return API_BASE
     return v
 
