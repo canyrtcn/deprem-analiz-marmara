@@ -35,13 +35,14 @@ c.close()
 
 _REPO_P = REPO_ROOT.replace("\\", "/")
 W = os.path.join(HERE, "g1c_w.py")
-_w_src = (
+_w_tpl = (
     "import os, sys\n"
     "os.environ['DEPREM_SKIP_DB_INIT']='1'\n"
     "sys.path.insert(0, r'__REPO__')\n"
     "import deprem_izleme.db as DB\n"
     "db, n, tag, mode = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]\n"
     "okc, refc = 0, 0\n"
+    "_reasons = []\n"
     "for i in range(n):\n"
     "    q = {'id': 200000+abs(hash((tag, i))) % 10**7,\n"
     "         'event_id': f'{tag}_{i}', 'occurred_at': '2026-09-02 10:00:00',\n"
@@ -54,10 +55,13 @@ _w_src = (
     "        else:\n"
     "            DB.insert_earthquake(q, db_path=db)\n"
     "        okc += 1\n"
-    "    except DB.MaintenanceActiveError:\n"
+    "    except DB.MaintenanceActiveError as _me:\n"
     "        refc += 1\n"
-    "print(f'{okc} {refc}')\n")
-open(W, "w").write(_w_src.replace("__REPO__", _REPO_P))
+    "        _reasons.append(str(_me)[:60])\n"
+    "print(f'{okc} {refc}')\n"
+    "print('REASONS:' + '|'.join(sorted(set(_reasons))))\n")
+_w_src = "".join(_w_tpl).replace("__REPO__", _REPO_P)
+open(W, "w").write(_w_src)
 SLOW = os.path.join(HERE, "g1c_slow.py")
 _slow_src = (
     "import os, sys, time\n"
