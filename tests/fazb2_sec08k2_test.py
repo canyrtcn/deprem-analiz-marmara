@@ -97,9 +97,26 @@ _annotate_magnitudes(api_c)
 check("K2: catismada iki olcu korunur",
       api_c["magnitude_canonical"] == 2.5 and api_c["mag_type"] == "ML"
       and ko_c["magnitude_canonical"] == 2.7 and ko_c["mag_type"] == "Mw", "")
-# 9. DB semasi degismedi (salt-okunur, SENTETIK sema; canli acilmaz) +
-# kayit silinmedi. k3t_v1 sentetik DB ayni legacy semasini tasir.
-con = sqlite3.connect(_os.path.join(TESTTMP, "k3t_v1.db"))
+# 9. DB semasi degismedi (salt-okunur; KENDI sentetik semasi, canli acilmaz).
+# Baska bataryanin urettigi dosyaya bel baglanmaz.
+from deprem_izleme.db import init_main_db as _init9
+import deprem_izleme.db as _DBM9
+_v1 = _os.path.join(TESTTMP, "k2_v1sema.db")
+for _sfx in ("", "-wal", "-shm", "-journal"):
+    if _os.path.exists(_v1 + _sfx):
+        _os.remove(_v1 + _sfx)
+_old_main = _DBM9.MAIN_DB
+_DBM9.MAIN_DB = _v1
+try:
+    _init9()
+finally:
+    _DBM9.MAIN_DB = _old_main
+con = sqlite3.connect(_v1)
+con.execute("INSERT INTO earthquakes (event_id, occurred_at, timestamp, latitude,"
+            " longitude, magnitude, source, region_tag) VALUES "
+            "('k0','2026-01-01 00:00:00',1,40.7,28.5,0.0,'t','marmara'),"
+            "('k1','2026-01-02 00:00:00',2,40.7,28.5,2.5,'t','marmara')")
+con.commit()
 cols = [r[1] for r in con.execute("PRAGMA table_info(earthquakes)").fetchall()]
 n0 = con.execute("SELECT COUNT(*) FROM earthquakes WHERE magnitude = 0.0").fetchone()[0]
 ntot = con.execute("SELECT COUNT(*) FROM earthquakes").fetchone()[0]

@@ -10,7 +10,7 @@ import shutil
 import sqlite3
 import time
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = os.environ.get("DEPREM_TESTTMP") or os.path.dirname(os.path.abspath(__file__))
 V1 = os.path.join(HERE, "k3t_v1.db")
 BACKUP = os.path.join(HERE, "k3t_backup.db")
 WORK = os.path.join(HERE, "k3t_work.db")

@@ -32,6 +32,13 @@ data/settings.json
 !data/settings.example.json
 data/notifications.jsonl
 
+# Test artigi (kosucu sentetik gecici dizinde uretir; duserde kalmasin)
+tests/*.db
+tests/*.db-wal
+tests/*.db-shm
+tests/*.db-journal
+tests/*.maint_lock
+
 # Ekran görüntüleri ve geçici dosyalar
 ss*.png
 assets/_*.png

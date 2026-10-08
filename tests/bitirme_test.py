@@ -135,8 +135,9 @@ check("BUG03: ham sayi kayitli", F.fetch_earthquakes.last_raw_count == 1000,
 
 # 7. DOC-02/03
 rd = open(_os.path.join(REPO_ROOT, "README.md"), encoding="utf-8").read()
-check("DOC: guncelleme kapali ifadesi", "kapalıdır" in rd or "kapali" in rd)
-check("DOC: denetim yalnizca bilgi", "yalnızca **bilgi**" in rd)
+check("DOC: guncelleme kapali ifadesi",
+      "otomatik güncelleme" in rd and "devre dışı" in rd)
+check("DOC: denetim yalnizca bilgi", "bilgi vermek içindir" in rd)
 check("DOC: gizli-depo denetim notu", "Denetlenemedi" in rd)
 check("DOC: eski otomatik-kurma iddiasi yok", "değiştirir ve yeniden başlar" not in rd)
 

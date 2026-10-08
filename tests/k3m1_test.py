@@ -31,6 +31,9 @@ SYN = os.path.join(HERE, "k3m1_syn.db")
 for s in ("", "-wal", "-shm", "-journal"):
     if os.path.exists(SYN + s):
         os.remove(SYN + s)
+# Bagimsiz fixture: baska bataryanin urettigi dosyaya bel baglanmaz.
+if not os.path.exists(os.path.join(HERE, "k3t_v1.db")):
+    P.build_v1()
 shutil.copy(os.path.join(HERE, "k3t_v1.db"), SYN)
 
 # 1. v2 sema + tetikleyici (gercek init_v2_schema)

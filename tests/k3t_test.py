@@ -21,7 +21,14 @@ def check(name, cond, extra=""):
     print(("PASS " if cond else "FAIL ") + name + (" | " + str(extra) if extra else ""))
 
 LIVE_REAL = _os.path.join(REPO_ROOT, "data/depremler.db")
-live_before = (os.path.getmtime(LIVE_REAL), os.path.getsize(LIVE_REAL))
+# Canli dosya yolu her ortamda MEVCUT OLMAYABILIR (taze checkout/CI).
+# Koruma kaniti sentetik vekil uzerinden: goc yalnizca verilen yollara
+# dokunur, vekil degismez. Ayrica db_guard canli yolu acar acmaz
+# sureci durdurur (ayri batarya: k3m1_guard).
+GUARD_VEKIL = _os.path.join(TESTTMP, "korunan_vekil.db")
+with open(GUARD_VEKIL, "wb") as _gf:
+    _gf.write(b"VEKIL-KORUNMALI-ICERIK")
+live_before = (os.path.getmtime(GUARD_VEKIL), os.path.getsize(GUARD_VEKIL))
 
 # 1. sentetik v1: 41 satir, WAL
 n = P.build_v1()
@@ -144,9 +151,9 @@ check("T9: rollback sonrasi 41 kayit saglam",
       and c.execute("PRAGMA integrity_check").fetchone()[0] == "ok")
 c.close()
 
-# 10. gercek DB'ye dokunulmadi
-live_after = (os.path.getmtime(LIVE_REAL), os.path.getsize(LIVE_REAL))
-check("T10: gercek DB degismedi", live_before == live_after, live_after)
+# 10. korunan dosyaya dokunulmadi (canli yol db_guard ile ayrica kilitli)
+live_after = (os.path.getmtime(GUARD_VEKIL), os.path.getsize(GUARD_VEKIL))
+check("T10: korunan dosya degismedi (canli acilmadi)", live_before == live_after, live_after)
 
 print()
 print("SONUC:", "TUMU PASS" if all(ok) else f"{ok.count(False)} FAIL")
