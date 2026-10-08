@@ -693,6 +693,16 @@ class DepremGUI(ctk.CTk):
                     pass
                 if not had:
                     self.pages.pop(name, None)
+                # Vurgu, görünen sayfaya geri alınır (tutarsız menü olmaz)
+                try:
+                    cur = getattr(self, "_current_page", None)
+                    for key, btn in self.nav_btns.items():
+                        if key == cur:
+                            btn.configure(fg_color=COLOR_ACCENT_DEEP, text_color="#FFFFFF")
+                        else:
+                            btn.configure(fg_color="transparent", text_color=COLOR_TEXT)
+                except Exception:
+                    pass
                 return
             finally:
                 try:
@@ -702,6 +712,7 @@ class DepremGUI(ctk.CTk):
         if name not in self.pages:
             return  # sayfa henüz kurulmadıysa sessizce yoksay
         self._show_only(name)
+        self._current_page = name
         try:
             self._fast_scroll(self.pages[name])
         except Exception:
