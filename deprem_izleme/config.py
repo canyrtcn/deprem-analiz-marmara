@@ -39,6 +39,35 @@ if getattr(sys, 'frozen', False):
 else:
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
+
+
+def _ensure_writable_data_dir():
+    """Exe salt-okunur yere kurulduysa (örn. Program Files) veriyi
+    kullanıcının AppData klasörüne taşı (yoksa uygulama açılmaz)."""
+    global DATA_DIR, MAIN_DB, WEEKLY_DB, MONTHLY_DB, SETTINGS_PATH
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        probe = os.path.join(DATA_DIR, ".yazma_testi")
+        with open(probe, "w", encoding="utf-8") as f:
+            f.write("ok")
+        os.remove(probe)
+        return
+    except Exception:
+        pass
+    try:
+        local = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        alt = os.path.join(local, "DepremAnalizMarmara", "data")
+        os.makedirs(alt, exist_ok=True)
+        DATA_DIR = alt
+        MAIN_DB = os.path.join(DATA_DIR, "depremler.db")
+        WEEKLY_DB = os.path.join(DATA_DIR, "haftalik.db")
+        MONTHLY_DB = os.path.join(DATA_DIR, "aylik.db")
+        SETTINGS_PATH = os.path.join(DATA_DIR, "settings.json")
+    except Exception:
+        pass
+
+
+_ensure_writable_data_dir()
 MAIN_DB = os.path.join(DATA_DIR, "depremler.db")
 WEEKLY_DB = os.path.join(DATA_DIR, "haftalik.db")
 MONTHLY_DB = os.path.join(DATA_DIR, "aylik.db")
@@ -60,7 +89,12 @@ OMORI_P = 1.0    # tipik üs
 # 1 J = 1 Nm
 
 # Kullanıcı ayarları (API anahtarı, görünüm, telegram) - data/settings.json
-SETTINGS_PATH = os.path.join(DATA_DIR, "settings.json")
+# NOT: _ensure_writable_data_dir() yukarıda gerekirse DATA_DIR ile birlikte
+# bunu da yönlendirmiştir; burada tekrar ezme.
+try:
+    SETTINGS_PATH
+except NameError:
+    SETTINGS_PATH = os.path.join(DATA_DIR, "settings.json")
 _settings_cache = None
 _settings_lock = None
 
