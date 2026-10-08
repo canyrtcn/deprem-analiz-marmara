@@ -91,7 +91,7 @@ with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-
     # Vektorler parcali kurulur: dosyada literal desen YOK, calisma-aninda
     # deger gercek formdadir (tarayiciyi dogrulamak icin sart).
     tf.write('TOKEN = "' + "bo" + "t123456" + ":" + "AAEc" + "_fake-token-degeri-123456" + '"\n'
-             'p = "' + "C:" + chr(92) + "Users" + chr(92) + "TestKisi" + chr(92) + "gizli" + '"\n')
+             'p = "' + "C:" + chr(92) + "Users" + chr(92) + "Test" + "Kisi" + chr(92) + "gizli" + '"\n')
     tpath = tf.name
 hits, _scan_status = scan_file(tpath)
 assert _scan_status == "ok", _scan_status
@@ -166,7 +166,7 @@ from deprem_izleme.errors import redact, log_error
 import deprem_izleme.errors as ERR
 SYN_TOK = "bo" + "t987654" + ":" + "SENTETIK-token-abc123XYZ"
 sample = (f"POST https://api.telegram.org/{SYN_TOK}/sendMessage 401; "
-          f"dosya C:{chr(92)}Users{chr(92)}OrnekKisi{chr(92)}data{chr(92)}x.db; mail "
+          f"dosya C:{chr(92)}Users{chr(92)}" + "Ornek" + "Kisi" + f"{chr(92)}data{chr(92)}x.db; mail "
           + "ornek.kisi@" + "gmail.com; "
           f"key Bearer SENTETIK-bearer-999")
 red = redact(sample)
@@ -179,7 +179,8 @@ with tempfile.TemporaryDirectory() as td:
     lp = os.path.join(td, "err.log")
     with mock.patch.object(ERR, "_log_path", return_value=lp):
         try:
-            raise RuntimeError(f"baglanti {SYN_TOK} yolu C:{chr(92)}Users{chr(92)}OrnekKisi{chr(92)}a")
+            raise RuntimeError(f"baglanti {SYN_TOK} yolu C:{chr(92)}Users{chr(92)}"
+                               + "Ornek" + "Kisi" + f"{chr(92)}a")
         except Exception as e:
             log_error(e, context=f"test {SYN_TOK}")
     content = open(lp, encoding="utf-8").read()
