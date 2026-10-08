@@ -135,10 +135,12 @@ check("BUG03: ham sayi kayitli", F.fetch_earthquakes.last_raw_count == 1000,
 
 # 7. DOC-02/03
 rd = open(_os.path.join(REPO_ROOT, "README.md"), encoding="utf-8").read()
-check("DOC: guncelleme kapali ifadesi",
-      "otomatik güncelleme" in rd and "devre dışı" in rd)
-check("DOC: denetim yalnizca bilgi", "bilgi vermek içindir" in rd)
-check("DOC: gizli-depo denetim notu", "Denetlenemedi" in rd)
+check("DOC: otomatik kurulum devre disi",
+      "otomatik güncelleme" in rd.lower() and "devre dışı" in rd)
+check("DOC: surum bildirimi manuel kurulumdan ayriliyor",
+      "yeni sürümleri bildirebilir" in rd and "elle yapılır" in rd)
+check("DOC: GitHub Releases indirme adresi",
+      "https://github.com/canyrtcn/deprem-analiz-marmara/releases" in rd)
 check("DOC: eski otomatik-kurma iddiasi yok", "değiştirir ve yeniden başlar" not in rd)
 
 # 8. SEC-03/04

@@ -11,8 +11,9 @@
 
 MIT lisanslı, açık kaynaklı bu Python, CustomTkinter ve SQLite tabanlı uygulama; deprem kayıtlarını yerel olarak saklar, harita ve grafikler üzerinden sunar, uygun veri koşullarında istatistiksel göstergeler hesaplar ve isteğe bağlı Telegram bildirimleri sağlar.
 
-> [!IMPORTANT]
-> **Deprem erken uyarı sistemi değildir.** Depremlerin ne zaman, nerede veya hangi büyüklükte gerçekleşeceğini güvenilir biçimde öngördüğü iddia edilmez. Olasılık olarak gösterilen değerler, varsayımlara bağlı **kalibre edilmemiş model çıktılarıdır**; bileşik aktivite/risk puanları ise olasılık değildir. Acil durumlarda ve resmî bilgilendirmelerde [AFAD](https://www.afad.gov.tr/) ile [Kandilli Rasathanesi](https://www.koeri.boun.edu.tr/) duyurularını esas alın.
+> **Önemli**
+>
+> **Depremlerin ne zaman, nerede ve hangi büyüklükte gerçekleşeceği önceden kesin olarak tahmin edilemez.** Deprem Analiz — Marmara, sismik verileri incelemek ve istatistiksel yöntemleri görselleştirmek amacıyla geliştirilmiş **deneysel bir uygulamadır; deprem erken uyarı sistemi değildir.** Sunulan model olasılıkları kalibre edilmemiştir; aktivite/risk puanları ise deprem gerçekleşme olasılığı olarak değerlendirilmemelidir. Resmî bilgilendirmeler ve acil durumlar için [AFAD](https://www.afad.gov.tr/) ile [Kandilli Rasathanesi](https://www.koeri.boun.edu.tr/) duyurularını takip edin.
 
 ## Uygulama görünümü
 
@@ -71,8 +72,8 @@ Kullanılabilir diğer seçenekler için `python main.py --help` komutunu çalı
 
 ## Veri kaynakları ve hesaplamaların yorumlanması
 
-- **Kayıt kaynakları:** [Sismik Harita](https://sismikharita.com) ve [Kandilli/KOERI](https://www.koeri.boun.edu.tr/). Kaynakların güncellik, erişilebilirlik, büyüklük türü ve revizyon uygulamaları farklı olabilir. Ağ hatası, “deprem yok” sonucuyla aynı değildir.
-- **Büyüklük türleri:** ML, Mw ve MD farklı ölçümlerdir. Uygulama bu türleri bilimsel dönüşüm yapmadan birbirine eşdeğer kabul etmez. Bazı kaynak/tür ayrımları mevcut v1 veritabanında tam olarak korunmaz.
+- **Kayıt kaynakları:** [Sismik Harita](https://sismikharita.com) ve [Kandilli/KOERI](https://www.koeri.boun.edu.tr/). Kataloglar kapsam, büyüklük türü ve güncellik bakımından farklılık gösterebilir.
+- **Büyüklük türleri:** ML, Mw ve MD farklı ölçümlerdir; bilimsel dönüşüm yapılmadan birbirine eşdeğer kabul edilmez. Kaynağın sunduğu büyüklük bilgisi her kayıtta aynı ayrıntıda olmayabilir.
 - **Poisson modeli:** Katalog yeterliliği ve gözlem aralığı koşullarına bağlı, kalibre edilmemiş istatistiksel olasılıklar sağlar; fiziksel deprem tehlikesi tahmini değildir.
 - **Bileşik skor:** Görsel karşılaştırma için kullanılan boyutsuz bir aktivite/risk göstergesidir. Yüzdelik deprem olasılığı olarak okunmamalıdır.
 - **Omori modeli:** Her kayıt için geçerli değildir; doğrulanmış Mw türünde, Mw ≥ 5.9 uygun anaşok koşulu aranır.
@@ -91,19 +92,17 @@ python main.py telegram-setup
 
 Bot tokenını `--token` gibi komut satırı parametrelerine yazmayın. Gönderim durumu, başarılı/başarısız/atlanan işlemleri ayırt edecek şekilde raporlanır. Gerçek mesaj gönderebilmek için ağ erişimi ve geçerli Telegram bilgileri gerekir.
 
-## Güncelleme ve bilinen sınırlamalar
+## Güncellemeler ve kullanım notları
 
-- **v1.0.1'de otomatik güncelleme indirme/kurma devre dışıdır.** Yeni sürüm denetimi bilgi vermek içindir. Yeni paketi GitHub Releases üzerinden elle edinin.
-- GitHub Releases erişilemiyorsa sürüm denetimi “Denetlenemedi” gösterebilir; bu, yeni sürümün bulunmadığının kanıtı değildir.
-- Mevcut dağıtım **v1 SQLite şemasıyla** çalışır. Yeni olay/gözlem/sürüm veritabanı mimarisine canlı geçiş bu sürümde etkin değildir.
-- Bazı gelişmiş istatistiksel modüllerin ve veri akışlarının bilinen sınırlamaları bulunmaktadır; çıktılar bilimsel uzman değerlendirmesinin yerine geçmez.
-- Uygulama, mevcut kayıtları ağ bağlantısı olmadan görüntüleyebilir; yeni deprem verilerinin indirilmesi için ilgili kaynaklara bağlantı gerekir.
+- **Sürüm güncellemesi:** Uygulama yeni sürümleri bildirebilir; indirme ve kurulum [GitHub Releases](https://github.com/canyrtcn/deprem-analiz-marmara/releases) üzerinden elle yapılır. Otomatik güncelleme indirme ve kurma devre dışıdır.
+- **Veri yeterliliği:** Yeterli kayıt bulunmadığında bazı istatistiksel sonuçlar gösterilmeyebilir.
+- **Çevrimdışı kullanım:** Daha önce indirilen kayıtlar görüntülenebilir; yeni deprem kayıtları için internet bağlantısı gerekir.
 
 Önceki sürümler ve değişiklik açıklamaları için [Releases](https://github.com/canyrtcn/deprem-analiz-marmara/releases) sayfasına bakın.
 
 ## Gizlilik ve yerel veriler
 
-Uygulama hesap açmayı veya konum takibini gerektirmez. Deprem veritabanları, ayarlar ve bildirim kayıtları yerel `data/` dizininde (gerekirse yazılabilir kullanıcı veri dizininde) tutulur. `data/settings.json` Git tarafından hariç tutulur; **Git tarafından hariç tutulması dosyanın şifrelendiği anlamına gelmez.** API anahtarlarını, Telegram kimlik bilgilerini ve yedekleri özel tutun; gerçek veri dosyalarını GitHub'a yüklemeyin.
+Uygulama hesap açmayı veya konum takibini gerektirmez. Deprem veritabanları, ayarlar ve bildirim kayıtları yerel `data/` dizininde (gerekirse yazılabilir kullanıcı veri dizininde) tutulur. Ayar dosyaları şifrelenmeden saklanabilir; API anahtarlarınızı, Telegram bilgilerinizi ve yedeklerinizi koruyun. Gerçek veri dosyalarını GitHub'a yüklemeyin.
 
 | Ortam değişkeni | Amaç |
 | --- | --- |
