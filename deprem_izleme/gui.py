@@ -497,6 +497,10 @@ class DepremGUI(ctk.CTk):
                     break
                 try:
                     func()
+                except AttributeError:
+                    # Henüz kurulmamış sayfanın widget'ı (lazy) — sessiz geç;
+                    # sayfa açılınca kendi yenilemesini yapar.
+                    pass
                 except Exception as ex:
                     try:
                         from deprem_izleme.errors import log_error
@@ -570,8 +574,12 @@ class DepremGUI(ctk.CTk):
         except Exception:
             pass
 
-    def _fast_scroll(self, root, mult=3):
-        """Fare tekerleği hızlandırma (CTkScrollableFrame varsayılanı yavaştır)."""
+    def _fast_scroll(self, root, mult=12):
+        """Fare tekerleği hızlandırma (CTkScrollableFrame varsayılanı yavaştır).
+
+        İçerik oranına göre kayar (notch başına ~%3.5) ve varsayılan
+        işleyiciyi durdurur (çift-kayma/sarsıntı olmaz).
+        """
         try:
             import customtkinter as _ctk
         except Exception:
@@ -579,8 +587,14 @@ class DepremGUI(ctk.CTk):
 
         def _bind_tree(w, canvas):
             try:
-                w.bind("<MouseWheel>",
-                       lambda e, c=canvas: c.yview_scroll(int(-e.delta / 120 * mult), "units"))
+                def _on_wheel(e, c=canvas):
+                    try:
+                        first, _ = c.yview()
+                        c.yview_moveto(max(0.0, min(1.0, first - (e.delta / 120) * 0.035)))
+                    except Exception:
+                        pass
+                    return "break"
+                w.bind("<MouseWheel>", _on_wheel)
             except Exception:
                 pass
             try:
@@ -2156,15 +2170,15 @@ class DepremGUI(ctk.CTk):
 
         # --- Uygulama (sürüm + GitHub + lisans) ---
         try:
-            from deprem_izleme.config import APP_VERSION, APP_NAME, GITHUB_URL
+            from deprem_izleme.config import APP_VERSION, APP_NAME, GITHUB_URL, GITHUB_OWNER
         except Exception:
-            APP_VERSION, APP_NAME, GITHUB_URL = "?", "Deprem Analiz - Marmara", ""
+            APP_VERSION, APP_NAME, GITHUB_URL, GITHUB_OWNER = "?", "Deprem Analiz - Marmara", "", ""
         app_card = self._make_card(p, "Uygulama")
         app_card.pack(fill="x", padx=28, pady=5)
         app_inner = ctk.CTkFrame(app_card, fg_color="transparent")
         app_inner.pack(fill="x", padx=14, pady=(0, 14))
         ctk.CTkLabel(app_inner,
-                     text=f"{APP_NAME}  •  Sürüm v{APP_VERSION}  •  Lisans: MIT",
+                     text=f"{APP_NAME}  •  Sürüm v{APP_VERSION}  •  Lisans: MIT  •  GitHub: {GITHUB_OWNER}",
                      font=ctk.CTkFont(size=11),
                      text_color=COLOR_TEXT).pack(anchor="w", pady=(0, 6))
         abtn = ctk.CTkFrame(app_inner, fg_color="transparent")
@@ -2573,17 +2587,20 @@ class DepremGUI(ctk.CTk):
             c = fetch_and_store(days_back=3, min_magnitude=0.0)
             self._bump_api_use()
             # KOERI'den de dene
+            kc, kerr = 0, ""
             try:
                 from deprem_izleme.fetcher_koeri import fetch_koeri
                 from deprem_izleme.db import insert_earthquake
-                for kq in fetch_koeri():
+                klist = fetch_koeri()
+                for kq in klist:
                     insert_earthquake(kq, region_tag=kq.get("region_tag", "marmara"))
-            except Exception:
-                pass
+                kc = len(klist)
+            except Exception as ke:
+                kerr = f" (KOERI: {friendly_error(ke)})"
             # Veriyi ekrana yansıt
             self._post_ui( self.refresh_all)
             self._post_ui(lambda: self.dash_status.configure(
-                text=f"✅ {c} yeni deprem çekildi + güncellendi", text_color=COLOR_SUCCESS))
+                text=f"✅ Sismik: {c} yeni + KOERI: {kc} kayıt{kerr}", text_color=COLOR_SUCCESS))
         except Exception as e:
             _emsg = friendly_error(e)
             self._post_ui(lambda e=_emsg: self.dash_status.configure(
@@ -2735,7 +2752,6 @@ class DepremGUI(ctk.CTk):
         if not r or not p: return
 
         score = r["composite_risk_score"]
-        enhanced = r.get("enhanced_risk_score", score)
         color = self._risk_color(score)
 
         self.risk_gauge.set(min(score, 1.0))
@@ -2768,7 +2784,9 @@ class DepremGUI(ctk.CTk):
         if self.earthquakes:
             last = self.earthquakes[0]
             loc = (last.get("location") or "?")[:35]
-            self.status_widgets["Son Deprem"].configure(text=f"M{(last.get('magnitude') or 0):.1f} {loc}")
+            _lm = last.get("magnitude")
+            self.status_widgets["Son Deprem"].configure(
+                text=f"M{_lm:.1f} {loc}" if _lm else f"M?.. {loc}")
 
         # Quake list — DÜZGÜN TABLO TASARIMI
         for w in self.quake_scroll.winfo_children():
@@ -2784,14 +2802,16 @@ class DepremGUI(ctk.CTk):
                              text_color=COLOR_INFO, width=w).pack(side="left", padx=4)
 
             for idx, eq in enumerate(self.earthquakes[:25]):
-                mag = eq.get("magnitude") or 0
-                depth = eq.get("depth_km") or 0
+                mag = eq.get("magnitude")
+                depth = eq.get("depth_km")
                 loc = (eq.get("location") or "?")[:42]
                 ts_raw = (eq.get("occurred_at") or "?")
                 ts = ts_raw[5:16] if len(ts_raw) > 15 else ts_raw
                 tag = eq.get("region_tag", "?").upper()
 
-                if mag >= 4.0: mc = COLOR_VERY_HIGH
+                if mag is None:
+                    mc = COLOR_TEXT2
+                elif mag >= 4.0: mc = COLOR_VERY_HIGH
                 elif mag >= 3.0: mc = COLOR_MODERATE
                 elif mag >= 2.0: mc = COLOR_HIGH
                 else: mc = COLOR_LOW
@@ -2801,11 +2821,11 @@ class DepremGUI(ctk.CTk):
                 row.pack(fill="x", pady=1)
                 row.pack_propagate(False)
 
-                ctk.CTkLabel(row, text=f"M{mag:.1f}", font=ctk.CTkFont(size=10, weight="bold"),
+                ctk.CTkLabel(row, text=f"M{mag:.1f}" if mag is not None else "M?..", font=ctk.CTkFont(size=10, weight="bold"),
                              text_color=mc, width=80).pack(side="left", padx=4)
                 ctk.CTkLabel(row, text=ts, font=ctk.CTkFont(size=9),
                              text_color=COLOR_BODY, width=95).pack(side="left")
-                ctk.CTkLabel(row, text=f"{depth:.0f} km", font=ctk.CTkFont(size=9),
+                ctk.CTkLabel(row, text=f"{depth:.0f} km" if depth is not None else "? km", font=ctk.CTkFont(size=9),
                              text_color=COLOR_DIM, width=70).pack(side="left")
                 ctk.CTkLabel(row, text=loc, font=ctk.CTkFont(size=9),
                              text_color=COLOR_BODY, width=250, anchor="w").pack(side="left")
@@ -2823,7 +2843,7 @@ class DepremGUI(ctk.CTk):
             "Bileşik Risk": {
                 "Risk Skoru": f"{r['composite_risk_score']:.4f}",
                 "Risk Seviyesi": r['risk_level'],
-                "Uyarı Seviyesi": p.get('warning_level', '?').upper(),
+                "Uyarı Seviyesi": self._warn_tr(p.get('warning_level', 'green')),
                 "b Anomalisi": f"{r['gutenberg_richter']['b_anomaly']:+.4f}",
             },
             "Gutenberg-Richter": {
@@ -2887,7 +2907,7 @@ class DepremGUI(ctk.CTk):
                 vals = [
                     seg.get("name_tr", seg.get("name_en", "?")),
                     f"{sc:.3f}",
-                    f"M{seg.get('max_magnitude', '?'):.1f}",
+                    f"M{seg.get('max_magnitude'):.1f}" if seg.get("max_magnitude") is not None else "M?..",
                     last_str,
                     f"{seg.get('nearby_quakes', 0)} deprem",
                 ]
@@ -2933,7 +2953,7 @@ class DepremGUI(ctk.CTk):
                 ctk.CTkLabel(self.rec_inner, text=freq, font=ctk.CTkFont(size=11),
                              text_color=COLOR_TEXT2).grid(row=idx + 1, column=2, padx=12, pady=2, sticky="w")
         else:
-            ctk.CTkLabel(self.rec_inner, text="Yetersiz veri — en az 10 deprem kaydı gerekli.",
+            ctk.CTkLabel(self.rec_inner, text="Seçili aralıkta yeterli veri yok.",
                          font=ctk.CTkFont(size=11), text_color=COLOR_WARNING).grid(row=1, column=0, columnspan=3, pady=10)
 
     def _update_history(self):
@@ -3033,7 +3053,9 @@ class DepremGUI(ctk.CTk):
             cf = ctk.CTkFrame(self.comp_inner, fg_color=COLOR_INSET, corner_radius=6)
             cf.pack(fill="x", pady=2)
             cf.grid_columnconfigure(1, weight=1)
-            dn = name.replace("_", " ").title()
+            dn = {"poisson": "Poisson", "b_trend_score": "b-Trendi",
+                  "energy_score": "Enerji", "z_score": "Z-Skor",
+                  "foreshock_score": "Öncü Sismisite"}.get(name, name.replace("_", " ").title())
             ctk.CTkLabel(cf, text=dn, font=ctk.CTkFont(size=9),
                          text_color=COLOR_TEXT2).grid(row=0, column=0, padx=(10, 4), pady=6, sticky="w")
             bar = ctk.CTkProgressBar(cf, height=8, corner_radius=3,
@@ -3205,14 +3227,25 @@ class DepremGUI(ctk.CTk):
         self.api_status.configure(text="Kaydedildi", text_color=COLOR_SUCCESS)
 
     def test_tel(self):
-        from deprem_izleme.notifier import _load_telegram_config, send_telegram_message
-        from deprem_izleme.notifier import save_telegram_config
-        save_telegram_config(self.tel_token.get(), self.tel_chat.get())
-        _load_telegram_config()
-        ok = send_telegram_message("Test mesajı başarılı!")
-        self.tel_status.configure(
-            text="Gönderildi!" if ok else "Hata - token/chat ID kontrol",
-            text_color=COLOR_SUCCESS if ok else COLOR_DANGER)
+        self.tel_status.configure(text="Gönderiliyor...", text_color=COLOR_WARNING)
+        token = self.tel_token.get()
+        chat = self.tel_chat.get()
+        threading.Thread(target=self._test_tel_worker, args=(token, chat), daemon=True).start()
+
+    def _test_tel_worker(self, token, chat):
+        try:
+            from deprem_izleme.notifier import _load_telegram_config, send_telegram_message
+            from deprem_izleme.notifier import save_telegram_config
+            save_telegram_config(token, chat)
+            _load_telegram_config()
+            ok = send_telegram_message("Test mesajı başarılı!")
+            self._post_ui(lambda: self.tel_status.configure(
+                text="Gönderildi!" if ok else "Hata - token/chat ID kontrol",
+                text_color=COLOR_SUCCESS if ok else COLOR_DANGER))
+        except Exception as e:
+            _emsg = str(e)
+            self._post_ui(lambda e=_emsg: self.tel_status.configure(
+                text=f"Hata: {e}", text_color=COLOR_DANGER))
 
     def save_tel_filters(self):
         from deprem_izleme.config import save_settings
