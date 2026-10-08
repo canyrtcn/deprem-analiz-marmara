@@ -549,6 +549,13 @@ def backfill_history(weeks=26, months=12, region="marmara"):
 
     if written_w or written_m:
         logger.info(f"Geçmiş dolduruldu: {written_w} hafta, {written_m} ay ({region})")
+    # Cari dönem birikir (hafta/ay bitmedi); eksik değilse bile tazele
+    try:
+        if get_earthquakes(region=region, limit=1):
+            compute_weekly_stats(region)
+            compute_monthly_stats(region)
+    except Exception:
+        pass
     return written_w, written_m
 
 
