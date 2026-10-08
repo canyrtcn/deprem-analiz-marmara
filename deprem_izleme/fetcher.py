@@ -26,7 +26,17 @@ def _check_limit():
     if today != _last_reset:
         _last_reset = today
         _request_count = 0
-    if _request_count >= DAILY_LIMIT:
+    # Kalıcı sayaç da kontrol edilir (aksi halde her yeniden başlatmada
+    # limit sıfırlanır ve günlük kota aşılır).
+    persisted = 0
+    try:
+        from deprem_izleme.config import load_settings
+        s = load_settings()
+        if s.get("api_date") == today.isoformat():
+            persisted = int(s.get("api_used", 0) or 0)
+    except Exception:
+        pass
+    if max(_request_count, persisted) >= DAILY_LIMIT:
         raise RuntimeError(f"Günlük API limiti aşıldı ({DAILY_LIMIT})")
     _request_count += 1
 
