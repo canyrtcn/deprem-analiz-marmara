@@ -86,7 +86,8 @@ python build.py --release  # + GitHub Release paketi (win64 zip)
   üretin, GitHub'da `v1.0.1` etiketiyle release açıp zip'i ekleyin.
 - Uygulama açılışta (sessizce) ve Ayarlar'dan (manuel) yeni release
   denetler; paket bulunduysa indirip `data/` hariç dosyaları
-  değiştirir ve yeniden başlar. Depo adresi
+  değiştirir ve yeniden başlar. Kişisel dosyalarınızı `data/`
+  altında tutun (güncelleme bu klasöre dokunmaz). Depo adresi
   `deprem_izleme/config.py` içindeki `GITHUB_OWNER` / `GITHUB_REPO`
   alanlarındadır.
 

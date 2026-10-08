@@ -183,8 +183,8 @@ def apply_update_bat(staged_dir, on_done=None):
             f.write('  timeout /t 1 /nobreak >NUL\n')
             f.write(')\n')
             f.write(':swapped\n')
-            # data/ hariç her şeyi değiştir
-            f.write('robocopy "' + staged_dir + '" "' + app_dir + '" /E /XD data /NFL /NDL /NJH /NJS >> "' + log_path + '" 2>&1\n')
+            # data/ hariç her şeyi değiştir (MIR: silinen dosyalar da temizlenir)
+            f.write('robocopy "' + staged_dir + '" "' + app_dir + '" /MIR /XD data /R:2 /W:2 /NFL /NDL /NJH /NJS >> "' + log_path + '" 2>&1\n')
             f.write('start "" "' + exe_path + '"\n')
             f.write('rmdir /S /Q "' + os.path.dirname(staged_dir) + '"\n')
             f.write('del "' + bat_path + '"\n')
