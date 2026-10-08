@@ -522,7 +522,7 @@ class DepremGUI(ctk.CTk):
                 from deprem_izleme.aggregation import backfill_history
                 nq = 0
                 try:
-                    nq = int(get_stats(region="marmara").get("count", 0) or 0)
+                    nq = int(get_stats(region="marmara").get("total", 0) or 0)
                 except Exception:
                     pass
                 if self._history_backfilled and nq == getattr(self, "_history_bf_count", -1):
