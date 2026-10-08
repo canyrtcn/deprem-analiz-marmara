@@ -12,6 +12,11 @@ bilgi verir, yeni sürüm elle indirilir.
 > AFAD (afad.gov.tr) ve Kandilli Rasathanesi'ni (koeri.boun.edu.tr)
 > takip edin.
 
+![Ana ekran (açık tema, sentetik demo verisi)](assets/demo_ana_ekran_acik_tema.png)
+
+> Görseldeki veriler arayüz tanıtımı için üretilmiş sentetik demo
+> verisidir; gerçek deprem ölçümü değildir.
+
 ## Özellikler
 
 - **Canlı veri:** Sismik Harita API (anahtar gerekmez, 100 istek/gün) +
