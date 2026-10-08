@@ -330,9 +330,12 @@ class DepremGUI(ctk.CTk):
             c = fetch_and_store(days_back=3, min_magnitude=0.0)
             self._bump_api_use()
             self._post_ui( self.refresh_all)
+            trunc = getattr(fetch_and_store, "truncated", False)
+            _msg = (f"✅ Güncel: {c} yeni deprem" if c else "✅ Veriler güncel")
+            if trunc:
+                _msg += " (⚠ API 1000 limitine takıldı)"
             self._post_ui(lambda: self.dash_status.configure(
-                text=f"✅ Güncel: {c} yeni deprem" if c else "✅ Veriler güncel",
-                text_color=COLOR_SUCCESS))
+                text=_msg, text_color=COLOR_SUCCESS))
         except Exception as e:
             _emsg = friendly_error(e)
             self._post_ui(lambda e=_emsg: self.dash_status.configure(

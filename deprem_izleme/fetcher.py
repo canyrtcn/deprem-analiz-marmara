@@ -107,8 +107,13 @@ def fetch_earthquakes(days_back=7, min_magnitude=0.0, sources=None):
 
 
 def fetch_and_store(days_back=7, min_magnitude=0.0, sources=None):
-    """Depremleri çek ve veritabanına kaydet."""
+    """Depremleri çek ve veritabanına kaydet.
+
+    Yan etki: fetch_and_store.truncated — API 1000 limitine takılındıysa
+    True (katalog eksik olabilir, istatistikler yanlı olur).
+    """
     quakes = fetch_earthquakes(days_back, min_magnitude, sources)
+    fetch_and_store.truncated = len(quakes) >= API_LIMIT
     if not quakes:
         logger.info("Kaydedilecek yeni deprem yok.")
         return 0
