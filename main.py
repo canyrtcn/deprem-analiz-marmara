@@ -159,7 +159,7 @@ def cmd_report(args):
         print(f"     b-trendi: {prediction.get('b_trend', 0):+.4f}")
         print(f"     Aktivite Z-skor: {prediction.get('anomaly_z_score', 0):.2f}")
         print(f"     Trend yonu: {_TRT.get(prediction.get('trend', 'stable'), '?')}")
-        print(f"\n  {prediction['prediction_window_days']} gunluk tahmin:")
+        print(f"\n  {prediction['prediction_window_days']} gunluk tahmin (bilesik gosterge):")
         print(f"     M>={prediction['min_magnitude_of_interest']} olasiligi: %{prediction['probability']*100:.1f}")
         print(f"     Beklenen maksimum: M{prediction.get('max_likely_magnitude', '?')}")
         print(f"     Tahmin edilen deprem sayisi: {prediction.get('expected_quake_count', 0):.1f}")
