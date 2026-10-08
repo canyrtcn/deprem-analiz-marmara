@@ -243,7 +243,7 @@ def check_and_alert(risk_report, prediction):
     Risk kontrolü yap, koşullar sağlanırsa Telegram bildirimi gönder.
 
     Tetikleyiciler (ayarlanabilir):
-    - Bileşik risk ≥ eşik (varsayılan 0.6)
+    - Bileşik risk ≥ eşik (varsayılan 0.7, YÜKSEK bandı)
     - Uyarı seviyesi seçili düzeylerde (varsayılan kırmızı/turuncu)
     - risk ≥ 0.4 + anomali Z ≥ 2.5
     Aynı risk için bekleme süresi (varsayılan 6 sa) içinde tekrar gönderilmez.

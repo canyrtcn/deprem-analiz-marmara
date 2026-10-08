@@ -823,13 +823,14 @@ def get_comprehensive_risk_report(region="marmara", max_age=45):
 
 
 def _risk_level(score):
-    if score >= 0.8:
+    # Bantlar uzman seçimidir (kalibre eşik değil): 0.85/0.70/0.45/0.25
+    if score >= 0.85:
         return "ÇOK YÜKSEK"
-    elif score >= 0.6:
+    elif score >= 0.70:
         return "YÜKSEK"
-    elif score >= 0.4:
+    elif score >= 0.45:
         return "ORTA"
-    elif score >= 0.2:
+    elif score >= 0.25:
         return "DÜŞÜK"
     return "ÇOK DÜŞÜK"
 

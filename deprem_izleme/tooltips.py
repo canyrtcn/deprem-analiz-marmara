@@ -64,11 +64,11 @@ TOOLTIPS = {
         "• Derinlik (%10)\n"
         "• Poisson olasılık (%15)\n\n"
         "Ayrıca fay segment riski ile harmanlanır.\n\n"
-        "0.0-0.2: Çok Düşük\n"
-        "0.2-0.4: Düşük\n"
-        "0.4-0.6: Orta\n"
-        "0.6-0.8: Yüksek\n"
-        "0.8-1.0: Çok Yüksek"
+        "0.00-0.25: Çok Düşük\n"
+        "0.25-0.45: Düşük\n"
+        "0.45-0.70: Orta\n"
+        "0.70-0.85: Yüksek\n"
+        "0.85-1.00: Çok Yüksek"
     ),
     "Beklenen Mmax": (
         "Beklenen Maksimum Magnitüd\n\n"
@@ -162,8 +162,8 @@ TOOLTIPS = {
         "Ağırlıklar uzman seçimidir, geçmiş depremlerle\n"
         "kalibre EDİLMEMİŞTİR — eğilim göstergesidir.\n\n"
         "Ayrıca fay segment riski ile harmanlanır.\n"
-        "0.0-0.2: Çok Düşük | 0.2-0.4: Düşük | 0.4-0.6: Orta\n"
-        "0.6-0.8: Yüksek | 0.8-1.0: Çok Yüksek"
+        "0.00-0.25: Çok Düşük | 0.25-0.45: Düşük | 0.45-0.70: Orta\n"
+        "0.70-0.85: Yüksek | 0.85-1.00: Çok Yüksek"
     ),
     "Gutenberg-Richter": (
         "Gutenberg-Richter Yasası\n\n"

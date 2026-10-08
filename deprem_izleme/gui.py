@@ -154,6 +154,14 @@ class DepremGUI(ctk.CTk):
         self.title("Deprem Analiz - Marmara")
         self.geometry("1360x820")
         self.minsize(1100, 700)
+        try:
+            # Ana pencere ekran ortasında açılsın (görev çubuğu payıyla)
+            _sw, _sh = self.winfo_screenwidth(), self.winfo_screenheight()
+            _x = max(0, (_sw - 1360) // 2)
+            _y = max(0, (_sh - 820) // 2 - 20)
+            self.geometry(f"1360x820+{_x}+{_y}")
+        except Exception:
+            pass
         self._alive = True
         self._refresh_lock = threading.Lock()
         self._ui_queue = queue.Queue()
@@ -751,9 +759,9 @@ class DepremGUI(ctk.CTk):
     # ---------------------------------------------------------------
 
     def _risk_color(self, s):
-        if s >= 0.8: return COLOR_CRITICAL
-        if s >= 0.6: return COLOR_HIGH
-        if s >= 0.4: return COLOR_MODERATE
+        if s >= 0.85: return COLOR_CRITICAL
+        if s >= 0.70: return COLOR_HIGH
+        if s >= 0.45: return COLOR_MODERATE
         return COLOR_LOW
 
     def _warn_color(self, lv):
@@ -2139,7 +2147,7 @@ class DepremGUI(ctk.CTk):
                 self.tel_enable.select()
             else:
                 self.tel_enable.deselect()
-            self.tel_threshold.insert(0, str(_sn.get("telegram_threshold", 0.6)))
+            self.tel_threshold.insert(0, str(_sn.get("telegram_threshold", 0.7)))
             self.tel_cooldown.insert(0, str(_sn.get("telegram_cooldown_h", 6)))
             _lvs = _sn.get("telegram_levels", ["red", "orange"]) or []
             for _k, _cb in self.tel_lv.items():
@@ -3302,9 +3310,9 @@ class DepremGUI(ctk.CTk):
     def save_tel_filters(self):
         from deprem_izleme.config import save_settings
         try:
-            thr = float(self.tel_threshold.get().strip() or 0.6)
+            thr = float(self.tel_threshold.get().strip() or 0.7)
         except Exception:
-            thr = 0.6
+            thr = 0.7
         thr = min(1.0, max(0.0, thr))
         try:
             cd = float(self.tel_cooldown.get().strip() or 6)

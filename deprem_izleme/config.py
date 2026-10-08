@@ -119,7 +119,7 @@ DEFAULT_SETTINGS = {
     "telegram_token": "",
     "telegram_chat_id": "",
     "telegram_enabled": True,
-    "telegram_threshold": 0.6,
+    "telegram_threshold": 0.7,
     "telegram_cooldown_h": 6,
     "telegram_levels": ["red", "orange"],
     "api_used": 0,
@@ -225,7 +225,7 @@ def get_api_key():
 
 # Telegram
 TELEGRAM_ENABLED = True
-TELEGRAM_RISK_THRESHOLD = 0.6  # 0-1 scale, 0.6+ triggers alert
+TELEGRAM_RISK_THRESHOLD = 0.7  # 0-1 scale, YÜKSEK bandıyla uyumlu
 
 # Cron
 FETCH_INTERVAL_MINUTES = 60  # her saat başı çek (günde ~24 req)

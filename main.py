@@ -216,9 +216,9 @@ def cmd_alert(args):
     if not alerted:
         try:
             from deprem_izleme.config import load_settings as _ls
-            _thr = float(_ls().get("telegram_threshold", 0.6) or 0.6)
+            _thr = float(_ls().get("telegram_threshold", 0.7) or 0.7)
         except Exception:
-            _thr = 0.6
+            _thr = 0.7
         print(f"! Risk skoru esik alti ({risk_report['composite_risk_score']:.3f} < {_thr:.2f}).")
         msg = format_risk_alert(risk_report, prediction)
         print("\n--- Mesaj önizleme ---")
