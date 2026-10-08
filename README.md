@@ -1,6 +1,6 @@
 # Deprem Analiz — Marmara
 
-**Marmara Denizi ve İstanbul çevresindeki deprem kayıtlarını takip etmek, görselleştirmek ve istatistiksel olarak incelemek için geliştirilmiş Windows masaüstü uygulaması.**
+**Marmara Denizi ve İstanbul çevresindeki deprem verilerini takip edin, harita ve grafiklerle inceleyin, bilimsel yöntemlere dayalı istatistiksel göstergeleri keşfedin.**
 
 ![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D4?style=flat-square)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square)
@@ -9,17 +9,18 @@
 ![Veritabanı](https://img.shields.io/badge/Database-SQLite-003B57?style=flat-square)
 [![Son sürüm](https://img.shields.io/badge/Release-v1.0.1-6F42C1?style=flat-square)](https://github.com/canyrtcn/deprem-analiz-marmara/releases/tag/v1.0.1)
 
-MIT lisanslı, açık kaynaklı bu Python, CustomTkinter ve SQLite tabanlı uygulama; deprem kayıtlarını yerel olarak saklar, harita ve grafikler üzerinden sunar, uygun veri koşullarında istatistiksel göstergeler hesaplar ve isteğe bağlı Telegram bildirimleri sağlar.
+**Deprem Analiz — Marmara**, Python, CustomTkinter ve SQLite ile geliştirilmiş açık kaynaklı bir Windows masaüstü uygulamasıdır. Deprem kayıtlarını yerel olarak saklar, geçmiş etkinliği analiz eder ve isteğe bağlı Telegram bildirimleri sunar.
 
-> **Önemli**
+> [!IMPORTANT]
+> ### ⚠️ Önemli
 >
-> **Depremlerin ne zaman, nerede ve hangi büyüklükte gerçekleşeceği önceden kesin olarak tahmin edilemez.** Deprem Analiz — Marmara, sismik verileri incelemek ve istatistiksel yöntemleri görselleştirmek amacıyla geliştirilmiş **deneysel bir uygulamadır; deprem erken uyarı sistemi değildir.** Sunulan model olasılıkları kalibre edilmemiştir; aktivite/risk puanları ise deprem gerçekleşme olasılığı olarak değerlendirilmemelidir. Resmî bilgilendirmeler ve acil durumlar için [AFAD](https://www.afad.gov.tr/) ile [Kandilli Rasathanesi](https://www.koeri.boun.edu.tr/) duyurularını takip edin.
+> **Depremlerin zamanı, yeri ve büyüklüğü önceden kesin olarak tahmin edilemez.** Bu proje, deprem verilerini analiz etmek ve bilimsel modelleri görselleştirmek amacıyla geliştirilmiş **deneysel bir uygulamadır; erken uyarı sistemi değildir.** İstatistiksel model çıktıları kesin deprem tahmini olarak değerlendirilmemelidir. Resmî duyurular için [AFAD](https://www.afad.gov.tr/) ve [Kandilli Rasathanesi](https://www.koeri.boun.edu.tr/) kaynaklarını takip edin.
 
 ## Uygulama görünümü
 
 ![Deprem Analiz — Marmara, açık tema ana ekran](assets/demo_ana_ekran_acik_tema.png)
 
-*Arayüz tanıtımındaki deprem kayıtları ve metrikler **sentetik demo verileridir**. Gerçek ölçüm, güncel sismik durum veya operasyonel tahmin olarak yorumlanmamalıdır.*
+*Ekran görüntüsünde arayüzü tanıtmak için hazırlanmış **sentetik örnek veriler** kullanılmıştır.*
 
 ## Özellikler
 
@@ -34,8 +35,6 @@ MIT lisanslı, açık kaynaklı bu Python, CustomTkinter ve SQLite tabanlı uygu
 | **Bildirimler** | Kullanıcı tarafından yapılandırılan eşiklere göre Telegram bildirimleri ve bildirim geçmişi |
 | **Arayüz** | Açık/koyu tema, metodoloji açıklamaları ve yerel veriyle çevrimdışı inceleme |
 
-Haritadaki fay çizgileri bilgilendirme amaçlı sayısallaştırılmış/şematik gösterimler içerir; resmî fay konumu, afet riski veya mühendislik değerlendirmesi yerine geçmez.
-
 ## İndirme ve kurulum
 
 ### Windows için hazır paket
@@ -47,7 +46,7 @@ Haritadaki fay çizgileri bilgilendirme amaçlı sayısallaştırılmış/şemat
 3. Klasördeki `deprem-analiz-marmara.exe` dosyasını çalıştırın. Ayrı bir kurulum sihirbazı gerekmez.
 4. İlk açılışta sunulan API/ayarlar rehberini izleyin. API anahtarı zorunlu değildir; anahtarsız kullanımda sağlayıcının kota sınırları uygulanabilir.
 
-> **Sürüm yükseltirken:** Mevcut `data/` klasörünüzü yedekleyin. Yeni paketi açtıktan sonra, verilerinizin yeni uygulama klasöründe korunmasını sağlayın; eski klasörü veya kişisel veri dosyalarını kontrol etmeden silmeyin. Release ZIP'i kullanıcı verilerini içermez.
+> **Güncelleme notu:** Yeni sürüme geçmeden önce `data/` klasörünüzü yedekleyin. ZIP paketi kişisel verilerinizi içermez.
 
 ### Kaynak koddan çalıştırma
 
@@ -70,48 +69,55 @@ python main.py backfill
 
 Kullanılabilir diğer seçenekler için `python main.py --help` komutunu çalıştırın.
 
-## Veri kaynakları ve hesaplamaların yorumlanması
+## Analiz yöntemleri
 
-- **Kayıt kaynakları:** [Sismik Harita](https://sismikharita.com) ve [Kandilli/KOERI](https://www.koeri.boun.edu.tr/). Kataloglar kapsam, büyüklük türü ve güncellik bakımından farklılık gösterebilir.
-- **Büyüklük türleri:** ML, Mw ve MD farklı ölçümlerdir; bilimsel dönüşüm yapılmadan birbirine eşdeğer kabul edilmez. Kaynağın sunduğu büyüklük bilgisi her kayıtta aynı ayrıntıda olmayabilir.
-- **Poisson modeli:** Katalog yeterliliği ve gözlem aralığı koşullarına bağlı, kalibre edilmemiş istatistiksel olasılıklar sağlar; fiziksel deprem tehlikesi tahmini değildir.
-- **Bileşik skor:** Görsel karşılaştırma için kullanılan boyutsuz bir aktivite/risk göstergesidir. Yüzdelik deprem olasılığı olarak okunmamalıdır.
-- **Omori modeli:** Her kayıt için geçerli değildir; doğrulanmış Mw türünde, Mw ≥ 5.9 uygun anaşok koşulu aranır.
-- **Coulomb açıklamaları:** Arayüzdeki basitleştirilmiş gösterim, doğrulanmış bir ΔCFF çözümü veya deprem tetikleme hesabı değildir.
-- **Eksik veri:** Yeterli ve uygun kayıt bulunmadığında uygulama bazı sayısal alanları hesaplamaz; “—” veya “yetersiz veri” gösterebilir.
+Uygulama, deprem kataloglarından elde edilen verileri farklı istatistiksel yöntemlerle değerlendirir:
 
-Bu proje bilimsel kavramları erişilebilir kılmayı ve deprem verisini incelemeyi amaçlar; resmî tehlike haritası, erken uyarı hizmeti veya afet kararı destek sistemi değildir.
+| Yöntem | Ne gösterir? |
+| --- | --- |
+| **Gutenberg–Richter** | Deprem büyüklüklerinin görülme sıklığını ve `a`/`b` parametrelerini inceler. |
+| **Katalog tamlığı (Mc)** | Büyüklük-frekans analizinin dayandığı katalog yeterliliğini değerlendirir. |
+| **Poisson modeli** | Seçilen büyüklük eşiği ve zaman aralığı için istatistiksel olay olasılıkları üretir. |
+| **Omori–Utsu** | Uygun anaşok dizilerinde artçı deprem etkinliğinin zamana bağlı değişimini modeller. |
+| **Aktivite ve risk göstergeleri** | Deprem sıklığı, büyüklük, derinlik ve eğilimleri bir araya getirerek karşılaştırmalı puanlar sunar. |
+| **Fay ve bölgesel inceleme** | Marmara fay segmentlerini, tarihsel deprem kayıtlarını ve ilgili bilimsel çalışmaları harita üzerinde birleştirir. |
+
+Hesaplamalar mevcut kayıtların kapsamına göre değişebilir; yeterli veri olmadığında ilgili gösterge hesaplanmayabilir. Bileşik aktivite/risk puanları **deprem olasılığı yüzdesi değildir**.
+
+Deprem kayıtları [Sismik Harita](https://sismikharita.com) ve [Kandilli/KOERI](https://www.koeri.boun.edu.tr/) üzerinden alınır. ML, Mw ve MD farklı büyüklük türleridir.
+
+Yöntemlerin bilimsel dayanakları ve Marmara literatürü aşağıdaki [Kaynaklar ve atıflar](#kaynaklar-ve-atıflar) bölümündedir.
 
 ## Telegram bildirimleri
 
-Telegram kullanımı isteğe bağlıdır. Ayarlar ekranından yapılandırılabilir veya terminalde gizli token girişiyle kurulabilir:
+İsteğe bağlı Telegram bildirimlerini uygulamanın Ayarlar ekranından veya aşağıdaki komutla yapılandırabilirsiniz:
 
 ```bash
 python main.py telegram-setup
 ```
 
-Bot tokenını `--token` gibi komut satırı parametrelerine yazmayın. Gönderim durumu, başarılı/başarısız/atlanan işlemleri ayırt edecek şekilde raporlanır. Gerçek mesaj gönderebilmek için ağ erişimi ve geçerli Telegram bilgileri gerekir.
+Bildirimler, seçtiğiniz eşiklere göre gönderilir. Bot tokenınızı paylaşmayın; komut satırına doğrudan parametre olarak yazmak yerine güvenli giriş yöntemini kullanın.
 
-## Güncellemeler ve kullanım notları
+## Güncellemeler
 
-- **Sürüm güncellemesi:** Uygulama yeni sürümleri bildirebilir; indirme ve kurulum [GitHub Releases](https://github.com/canyrtcn/deprem-analiz-marmara/releases) üzerinden elle yapılır. Otomatik güncelleme indirme ve kurma devre dışıdır.
-- **Veri yeterliliği:** Yeterli kayıt bulunmadığında bazı istatistiksel sonuçlar gösterilmeyebilir.
-- **Çevrimdışı kullanım:** Daha önce indirilen kayıtlar görüntülenebilir; yeni deprem kayıtları için internet bağlantısı gerekir.
+Uygulama yeni sürümleri bildirebilir; indirme ve kurulum [GitHub Releases](https://github.com/canyrtcn/deprem-analiz-marmara/releases) üzerinden **elle yapılır**. Otomatik güncelleme indirme ve kurma **devre dışıdır**.
 
-Önceki sürümler ve değişiklik açıklamaları için [Releases](https://github.com/canyrtcn/deprem-analiz-marmara/releases) sayfasına bakın.
+Önceki sürümleri ve değişikliklerini [Releases](https://github.com/canyrtcn/deprem-analiz-marmara/releases) sayfasında bulabilirsiniz.
 
 ## Gizlilik ve yerel veriler
 
-Uygulama hesap açmayı veya konum takibini gerektirmez. Deprem veritabanları, ayarlar ve bildirim kayıtları yerel `data/` dizininde (gerekirse yazılabilir kullanıcı veri dizininde) tutulur. Ayar dosyaları şifrelenmeden saklanabilir; API anahtarlarınızı, Telegram bilgilerinizi ve yedeklerinizi koruyun. Gerçek veri dosyalarını GitHub'a yüklemeyin.
+Deprem kayıtları, kullanıcı ayarları ve bildirim geçmişi bilgisayarınızda saklanır. Hesap oluşturmanız veya konum paylaşmanız gerekmez. API anahtarları ve Telegram bilgilerinizin bulunduğu ayar dosyalarını güvenli tutun.
 
-| Ortam değişkeni | Amaç |
+### Ortam değişkenleri
+
+| Değişken | Açıklama |
 | --- | --- |
 | `DEPREM_TELEGRAM_TOKEN` | Telegram bot tokenı |
-| `DEPREM_TELEGRAM_CHAT_ID` | Telegram hedef sohbet kimliği |
-| `DEPREM_START_PAGE` | GUI açılış sayfası (örn. `harita`) |
-| `DEPREM_DEV=1` | Yerel geliştirme modu; üretim kullanımı için önerilmez |
+| `DEPREM_TELEGRAM_CHAT_ID` | Bildirimlerin gönderileceği sohbet kimliği |
+| `DEPREM_START_PAGE` | Açılışta gösterilecek sayfa |
+| `DEPREM_DEV=1` | Geliştirme ortamı seçeneği |
 
-Not: Uygulama `.env` dosyası okumaz; yukarıdaki değişkenler işletim sistemi ortamında tanımlanmalıdır. `.env.example` yalnızca başvurulacak değer listesidir.
+Uygulama `.env` dosyasını otomatik okumaz; değişkenler işletim sistemi ortamında tanımlanır. `.env.example` örnek yapılandırma dosyasıdır.
 
 ## Geliştirme ve paketleme
 
@@ -122,63 +128,61 @@ python build.py
 python build.py --release
 ```
 
-`python build.py`, `dist/` altında taşınabilir Windows uygulamasını üretir. `--release` seçeneği ayrıca ZIP oluşturur; **GitHub'a otomatik olarak release yayımlamaz**. Dağıtım ZIP'ine `data/` kullanıcı klasörü eklenmez.
+`python build.py` taşınabilir Windows uygulamasını `dist/` altında oluşturur. `--release` seçeneği dağıtım için ZIP paketi hazırlar; kullanıcıya ait `data/` klasörü pakete alınmaz.
 
 Ana modüller `deprem_izleme/` paketinde; GUI giriş noktası `run_gui.py`, CLI `main.py`, paketleyici `build.py` dosyasındadır.
 
 ## Kaynaklar ve atıflar
 
-Bu bölümde **uygulamanın hesaplamalarında yararlanılan yöntemsel çalışmalar**, **Marmara'nın sismotektoniğini açıklayan bilimsel yayınlar** ve **veri/harita kaynakları** ayrı gösterilmiştir. Makaleye atıf verilmesi, çalışmadaki bütün sonuçların veya parametrelerin uygulamaya eksiksiz aktarıldığı, bağımsız olarak doğrulandığı ya da uygulamanın yazarlar tarafından onaylandığı anlamına gelmez.
+Uygulamanın istatistiksel yaklaşımlarına ve Marmara'nın sismotektonik yapısına ışık tutan bilimsel çalışmalar aşağıda yer alıyor. Her yayının projeyle bağlantısı kısaca özetlenmiştir.
 
 ### Deprem istatistiği ve katalog analizi
 
-| Çalışma | Uygulamadaki ilişki |
+| Çalışma | Bilimsel katkısı ve projeyle bağlantısı |
 | --- | --- |
-| **Gutenberg & Richter (1944)** — [*Frequency of earthquakes in California*](https://doi.org/10.1785/BSSA0340040185) | Deprem büyüklüğü–frekans ilişkisi (`a` ve `b` parametreleri). |
-| **Aki (1965)** — [*Maximum likelihood estimate of b in the formula log N = a − bM and its confidence limits*](https://doi.org/10.15083/0000033631) | Gutenberg–Richter `b` değerinin maksimum olabilirlik yaklaşımı. |
-| **Utsu (1966)** — [*A Statistical Significance Test of the Difference in b-value between Two Earthquake Groups*](https://doi.org/10.4294/jpe1952.14.37) | `b` değerinin istatistiksel değerlendirilmesine ilişkin klasik çalışma. |
-| **Shi & Bolt (1982)** — [*The standard error of the magnitude-frequency b value*](https://doi.org/10.1785/BSSA0720051677) | `b` değeri belirsizliğine ilişkin yöntemsel referans; tam güven aralığı uygulamasıyla karıştırılmamalıdır. |
-| **Wiemer & Wyss (2000)** — [*Minimum Magnitude of Completeness in Earthquake Catalogs*](https://doi.org/10.1785/0119990114) | Katalog tamlık büyüklüğü (`Mc`), MAXC ve uygunluk kontrolleri. |
-| **Woessner & Wiemer (2005)** — [*Assessing the Quality of Earthquake Catalogues: Estimating the Magnitude of Completeness and Its Uncertainty*](https://doi.org/10.1785/0120040007) | `Mc` tahmini ile belirsizlik ve doğrulama ayrımı. |
-| **Gardner & Knopoff (1974)** — [*Is the sequence of earthquakes in Southern California, with aftershocks removed, Poissonian?*](https://doi.org/10.1785/BSSA0640051363) | Zaman/uzaklık pencereleriyle artçı kümelerinin ayıklanmasına dayanak. |
-| **Hanks & Kanamori (1979)** — [*A moment magnitude scale*](https://doi.org/10.1029/JB084iB05p02348) | Sismik moment ve moment büyüklüğü ilişkisine ilişkin arka plan. Farklı katalog büyüklük türleri doğrudan eşitlenmez. |
-| **Schorlemmer, Wiemer & Wyss (2005)** — [*Variations in earthquake-size distribution across different stress regimes*](https://doi.org/10.1038/nature04094) | `b` değerinin fiziksel/tektonik yorumundaki kısıtlara ilişkin arka plan. |
+| **Gutenberg & Richter (1944)** — [*Frequency of earthquakes in California*](https://doi.org/10.1785/BSSA0340040185) | Deprem büyüklüğü–frekans yasası; `a` ve `b` parametrelerinin temeli. |
+| **Aki (1965)** — [*Maximum likelihood estimate of b in the formula log N = a − bM and its confidence limits*](https://doi.org/10.15083/0000033631) | `b` değerinin maksimum olabilirlik yöntemiyle hesaplanması. |
+| **Utsu (1966)** — [*A Statistical Significance Test of the Difference in b-value between Two Earthquake Groups*](https://doi.org/10.4294/jpe1952.14.37) | Farklı deprem gruplarının `b` değerlerini istatistiksel olarak karşılaştırma yaklaşımı. |
+| **Shi & Bolt (1982)** — [*The standard error of the magnitude-frequency b value*](https://doi.org/10.1785/BSSA0720051677) | `b` değerinin standart hatası ve belirsizlik analizi. |
+| **Wiemer & Wyss (2000)** — [*Minimum Magnitude of Completeness in Earthquake Catalogs*](https://doi.org/10.1785/0119990114) | Katalog tamlık büyüklüğünün (`Mc`) ve büyüklük-frekans dağılımının değerlendirilmesi. |
+| **Woessner & Wiemer (2005)** — [*Assessing the Quality of Earthquake Catalogues: Estimating the Magnitude of Completeness and Its Uncertainty*](https://doi.org/10.1785/0120040007) | Katalog kalitesi ve `Mc` tahmininin nicel değerlendirilmesi. |
+| **Gardner & Knopoff (1974)** — [*Is the sequence of earthquakes in Southern California, with aftershocks removed, Poissonian?*](https://doi.org/10.1785/BSSA0640051363) | Artçı kümelerini ayıklama ve arka plan sismisitesini inceleme yöntemi. |
+| **Hanks & Kanamori (1979)** — [*A moment magnitude scale*](https://doi.org/10.1029/JB084iB05p02348) | Sismik moment ve moment büyüklüğü (`Mw`) arasındaki temel bağıntı. |
+| **Schorlemmer, Wiemer & Wyss (2005)** — [*Variations in earthquake-size distribution across different stress regimes*](https://doi.org/10.1038/nature04094) | `b` değerinin farklı tektonik gerilme ortamlarında değişimine ilişkin bulgular. |
 
-### Artçı modelleri ve bilimsel tahmin sınırları
+### Artçı sismisitesi ve istatistiksel modeller
 
-| Çalışma | Uygulamadaki ilişki |
+| Çalışma | Bilimsel katkısı ve projeyle bağlantısı |
 | --- | --- |
-| **Reasenberg & Jones (1989)** — [*Earthquake Hazard After a Mainshock in California*](https://doi.org/10.1126/science.243.4895.1173) | Anaşok sonrası artçı aktivitesinin istatistiksel modellenmesi için temel referans. |
-| **Müderrisoğlu & Yazgan (2020)** — [*Development of an aftershock occurrence model calibrated for Turkey and the resulting likelihoods*](https://doi.org/10.1007/s11803-020-0553-2) | Türkiye artçı dizileriyle elde edilen Omori modeli parametreleri (`a = −1.90`, `b = 1.11`, `c = 0.05`, `p = 1.20`); uygun anaşok koşulları dışında uygulanmaz. |
-| **Gulia & Wiemer (2019)** — [*Real-time discrimination of earthquake foreshocks and aftershocks*](https://doi.org/10.1038/s41586-019-1606-4) | Deprem dizilerinin yorumlanmasına ilişkin literatür; makaledeki özgül sınıflandırma yöntemi uygulamada doğrulanmış olarak sunulmaz. |
-| **Jordan ve diğerleri (2011)** — [*Operational Earthquake Forecasting: State of Knowledge and Guidelines for Utilization*](https://doi.org/10.4401/ag-5350) | Operasyonel tahminlerde belirsizlik, iletişim ve kullanım sınırları için çerçeve. |
+| **Reasenberg & Jones (1989)** — [*Earthquake Hazard After a Mainshock in California*](https://doi.org/10.1126/science.243.4895.1173) | Anaşok sonrası artçı etkinliğinin istatistiksel modellenmesi. |
+| **Müderrisoğlu & Yazgan (2020)** — [*Development of an aftershock occurrence model calibrated for Turkey and the resulting likelihoods*](https://doi.org/10.1007/s11803-020-0553-2) | Türkiye'deki `Mw ≥ 5.9` anaşok dizilerine dayanan Omori modeli kalibrasyonu. |
+| **Gulia & Wiemer (2019)** — [*Real-time discrimination of earthquake foreshocks and aftershocks*](https://doi.org/10.1038/s41586-019-1606-4) | Öncü ve artçı deprem dizilerinin gerçek zamanlı ayrımına ilişkin araştırma. |
+| **Jordan ve diğerleri (2011)** — [*Operational Earthquake Forecasting: State of Knowledge and Guidelines for Utilization*](https://doi.org/10.4401/ag-5350) | Operasyonel deprem tahmini modellerinin bilimsel çerçevesi ve sonuçların iletişimi. |
 
 ### Marmara fay sistemi, tarihsel deprem etkinliği ve gerilme
 
-| Çalışma | Uygulamadaki ilişki |
+| Çalışma | Bilimsel katkısı ve projeyle bağlantısı |
 | --- | --- |
-| **Le Pichon ve diğerleri (2001)** — [*The active Main Marmara Fault*](https://doi.org/10.1016/S0012-821X(01)00449-6) | Marmara Denizi ana fay geometrisi ve bölgesel tektonik arka plan. |
-| **Ambraseys (2002)** — [*The Seismic Activity of the Marmara Sea Region over the Last 2000 Years*](https://doi.org/10.1785/0120000843) | Tarihsel Marmara deprem kataloğu ve sismisite yorumları için kaynak. |
-| **Armijo ve diğerleri (2005)** — [*Submarine fault scarps in the Sea of Marmara pull-apart*](https://doi.org/10.1029/2004GC000896) | Denizaltı fay morfolojisi ve segmentasyonuna ilişkin bölgesel çalışma. |
-| **Parsons (2004)** — [*Recalculated probability of M ≥ 7 earthquakes beneath the Sea of Marmara, Turkey*](https://doi.org/10.1029/2003JB002667) | Marmara için olasılıksal tehlike araştırmalarına tarihsel/bilimsel bağlam; makaledeki bölgesel olasılıklar uygulamanın kendi kalibre edilmemiş çıktılarıyla eşdeğer değildir. |
-| **Rockwell ve diğerleri (2009)** — [*Palaeoseismology of the North Anatolian fault near the Marmara Sea*](https://doi.org/10.1144/SP316.3) | Fay segmentasyonu, paleosismoloji ve tekrarlama bağlamı. |
-| **Martínez-Garzón ve diğerleri (2026; çevrimiçi 2025)** — [*Progressive eastward rupture of the Main Marmara fault toward Istanbul*](https://doi.org/10.1126/science.adz0072) | Marmara'daki yakın dönem kırılmaların bilimsel yorumu; uygulamadaki fay tehlike puanlarının bu makaleyle doğrulandığı anlamına gelmez. |
-| **King, Stein & Lin (1994)** — [*Static stress changes and the triggering of earthquakes*](https://doi.org/10.1785/BSSA0840030935) | Coulomb gerilme değişimi kavramının temel referansı. |
-| **Okada (1992)** — [*Internal deformation due to shear and tensile faults in a half-space*](https://doi.org/10.1785/BSSA0820021018) | Elastik yarı uzay deformasyonu için referans; uygulamadaki basitleştirilmiş gösterim tam Okada çözümü değildir. |
-| **Wells & Coppersmith (1994)** — [*New empirical relationships among magnitude, rupture length, rupture width, rupture area, and surface displacement*](https://doi.org/10.1785/BSSA0840040974) | Kırılma boyutları ile büyüklük arasındaki ampirik ilişkilerin arka planı. |
+| **Le Pichon ve diğerleri (2001)** — [*The active Main Marmara Fault*](https://doi.org/10.1016/S0012-821X(01)00449-6) | Ana Marmara Fayı'nın geometrisi ve aktif tektonik yapısı. |
+| **Ambraseys (2002)** — [*The Seismic Activity of the Marmara Sea Region over the Last 2000 Years*](https://doi.org/10.1785/0120000843) | Marmara'nın uzun dönem tarihsel deprem etkinliği. |
+| **Armijo ve diğerleri (2005)** — [*Submarine fault scarps in the Sea of Marmara pull-apart*](https://doi.org/10.1029/2004GC000896) | Marmara Denizi tabanındaki fay izleri ve segment morfolojisi. |
+| **Parsons (2004)** — [*Recalculated probability of M ≥ 7 earthquakes beneath the Sea of Marmara, Turkey*](https://doi.org/10.1029/2003JB002667) | Marmara için olasılıksal sismik tehlike araştırmaları. |
+| **Rockwell ve diğerleri (2009)** — [*Palaeoseismology of the North Anatolian fault near the Marmara Sea*](https://doi.org/10.1144/SP316.3) | Kuzey Anadolu Fayı'nda paleosismoloji, kırılma geçmişi ve segmentasyon. |
+| **Martínez-Garzón ve diğerleri (2026; çevrimiçi 2025)** — [*Progressive eastward rupture of the Main Marmara fault toward Istanbul*](https://doi.org/10.1126/science.adz0072) | 2025 Marmara deprem dizisi ve doğuya ilerleyen fay kırılmalarının analizi. |
+| **King, Stein & Lin (1994)** — [*Static stress changes and the triggering of earthquakes*](https://doi.org/10.1785/BSSA0840030935) | Statik gerilme değişimleri ve Coulomb gerilmesi yaklaşımı. |
+| **Okada (1992)** — [*Internal deformation due to shear and tensile faults in a half-space*](https://doi.org/10.1785/BSSA0820021018) | Elastik yarı uzayda fay kaynaklı deformasyonun matematiksel temeli. |
+| **Wells & Coppersmith (1994)** — [*New empirical relationships among magnitude, rupture length, rupture width, rupture area, and surface displacement*](https://doi.org/10.1785/BSSA0840040974) | Deprem büyüklüğü ile kırılma boyutları arasındaki ampirik ilişkiler. |
 
-### Veri, harita ve coğrafi atıflar
+### Veri ve harita kaynakları
 
 | Kaynak | Kullanım ve kapsam |
 | --- | --- |
-| [Sismik Harita](https://sismikharita.com) | Deprem kaydı/API kaynağı; kullanım kotası ve kapsama koşulları sağlayıcıya bağlıdır. |
-| [Kandilli Rasathanesi / KOERI](https://www.koeri.boun.edu.tr/) | Son depremler ve kaynak bazlı kayıt karşılaştırmaları. |
-| [AFAD](https://deprem.afad.gov.tr/) | Resmî deprem bilgilerini kontrol etmek için başvuru kaynağı; uygulamanın bütün kayıtları doğrudan AFAD'dan çektiği anlamına gelmez. |
-| [Natural Earth](https://www.naturalearthdata.com/) — [kullanım koşulları](https://www.naturalearthdata.com/about/terms-of-use/) | Harita/kıyı çizgilerinin coğrafi altlığı; Natural Earth verileri kamu malıdır (*public domain*). |
-| [MTA — Türkiye Diri Fay Haritası](https://tdfh.mta.gov.tr/) | Fay gösterimleri için kurumsal referans. Uygulamadaki çizgiler resmî haritanın bire bir ve güncel kopyası değildir. |
-| [ozangerger/earthquakes-in-istanbul](https://github.com/ozangerger/earthquakes-in-istanbul) | Fay geometrilerinin sayısallaştırılmasında belirtilen üçüncü taraf kaynak. **Kaynak göstermek, kod/veri yeniden dağıtım izni değildir; bu verilerin lisans/izin durumu ayrıca teyit edilmelidir.** |
-
-> **Bilimsel ve hukuki kapsam:** Kaynak çalışmalar uygulamanın hesaplamalarıyla aynı değildir; birçok bileşen sadeleştirilmiş, kalibre edilmemiş veya yalnızca bilgilendirme amaçlıdır. Makale referansları bilimsel geçerlilik garantisi sağlamaz. Özellikle üçüncü taraf fay koordinatlarının dağıtım hakları doğrulanmadan projenin herkese açık yayını için lisans uygunluğu varsayılmamalıdır.
+| [Sismik Harita](https://sismikharita.com) | Deprem katalogları ve güncel kayıtların temini. |
+| [Kandilli Rasathanesi / KOERI](https://www.koeri.boun.edu.tr/) | Kandilli deprem kataloğu ve bölgesel kayıtların incelenmesi. |
+| [AFAD](https://deprem.afad.gov.tr/) | Resmî deprem verileri ve güncel duyurular için referans. |
+| [Natural Earth](https://www.naturalearthdata.com/) | Marmara kıyı çizgisi ve temel coğrafi altlık. |
+| [MTA — Türkiye Diri Fay Haritası](https://tdfh.mta.gov.tr/) | Türkiye'nin diri fay sistemine ilişkin kurumsal harita referansı. |
+| [ozangerger/earthquakes-in-istanbul](https://github.com/ozangerger/earthquakes-in-istanbul) | MTA temelli fay izlerinin sayısallaştırılması için yararlanılan kaynak proje. |
 
 ## Lisans
 
