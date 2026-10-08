@@ -120,14 +120,27 @@ def fetch_and_store(days_back=7, min_magnitude=0.0, sources=None):
         logger.info("Kaydedilecek yeni deprem yok.")
         return 0
 
-    # Önce veritabanında son kaydın timestamp'ini al, ondan yenilerini filtrele
+    # Yinelenenleri event_id ile ele (zaman damgasına göre değil: geç
+    # yayınlanan eski depremler de kaçırılmamalı).
     conn = get_db(MAIN_DB)
-    last_ts = conn.execute("SELECT MAX(timestamp) FROM earthquakes").fetchone()[0] or 0
-    conn.close()
+    try:
+        since_str = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+        existing = {r[0] for r in
+                    conn.execute("SELECT event_id FROM earthquakes WHERE occurred_at >= ?",
+                                 (since_str,)).fetchall() if r[0]}
+    finally:
+        conn.close()
 
-    new_quakes = [q for q in quakes
-                  if q.get("occurred_at", "") and
-                  _parse_occurred_ts(q["occurred_at"]) > last_ts]
+    seen = set()
+    new_quakes = []
+    for q in quakes:
+        eid = q.get("event_id")
+        if not eid or not q.get("occurred_at", ""):
+            continue
+        if eid in existing or eid in seen:
+            continue
+        seen.add(eid)
+        new_quakes.append(q)
 
     if not new_quakes:
         logger.info("Yeni deprem yok (hepsi kayıtlı).")
