@@ -200,7 +200,7 @@ def interpret_now(risk_report, prediction):
 def build_analysis_prompt(risk_report, prediction, recurrence_data):
     """
     AI modeline verilecek yapılandırılmış analiz metnini oluşturur.
-    Bu metin daha sonra DeepSeek v4 Flash gibi bir modele verilerek
+    Bu metin daha sonra bir yapay zeka modeline verilerek
     doğal dil yorumu alınabilir.
     """
     r = risk_report

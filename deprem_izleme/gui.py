@@ -3156,7 +3156,7 @@ class DepremGUI(ctk.CTk):
         resp = messagebox.askyesno(
             "AI Analiz Raporu",
             "Analiz metni panoya kopyalandı!\n\n"
-            "DeepSeek v4 Flash veya başka bir modele yapıştırarak\n"
+            "Bir yapay zeka modeline yapıştırarak\n"
             "doğal dil yorumu alabilirsiniz.\n\n"
             "Dosyaya da kaydetmek ister misiniz?"
         )
