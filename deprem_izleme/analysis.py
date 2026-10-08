@@ -204,7 +204,7 @@ def build_analysis_prompt(risk_report, prediction, recurrence_data):
     p = prediction
 
     lines = [
-        "=== DEPREM İZLEME SİSTEMİ - ANALİZ RAPORU ===",
+        "=== DEPREM ANALİZ - MARMARA - ANALİZ RAPORU ===",
         f"Bölge: {r['region'].title()}",
         f"Tarih: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
         "",

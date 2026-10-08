@@ -1,5 +1,5 @@
 """
-Deprem İzleme ve Risk Analiz Sistemi - Ana Orchestrator
+Deprem Analiz - Marmara - Ana Orchestrator
 """
 import os
 import sys
@@ -223,13 +223,13 @@ def cmd_telegram_setup(args):
     os.environ["DEPREM_TELEGRAM_CHAT_ID"] = chat_id
 
     # Test
-    send_telegram_message("🧪 **Deprem Izleme Sistemi**\n\nTelegram bildirimleri aktif!\nAyarlar basariyla tamamlandi.")
+    send_telegram_message("🧪 **Deprem Analiz - Marmara**\n\nTelegram bildirimleri aktif!\nAyarlar basariyla tamamlandi.")
     print("Telegram ayarlari yapildi ve test mesaji gonderildi.")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Deprem İzleme ve Risk Analiz Sistemi - Marmara & İstanbul",
+        description="Deprem Analiz - Marmara",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Örnek kullanım:

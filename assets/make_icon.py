@@ -1,4 +1,4 @@
-"""Deprem Izleme uygulamasi ikonu - kodla uretilir (dis asset yok)."""
+"""Deprem Analiz uygulamasi ikonu - kodla uretilir (dis asset yok)."""
 import os
 from PIL import Image, ImageDraw
 

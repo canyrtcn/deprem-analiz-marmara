@@ -67,6 +67,8 @@ DEFAULT_SETTINGS = {
     "api_base": API_BASE,
     "api_key": "",
     "appearance": "light",
+    "welcome_shown": False,
+    "auto_update_check": True,
     "telegram_token": "",
     "telegram_chat_id": "",
     "telegram_enabled": True,
@@ -141,3 +143,17 @@ TELEGRAM_RISK_THRESHOLD = 0.6  # 0-1 scale, 0.6+ triggers alert
 
 # Cron
 FETCH_INTERVAL_MINUTES = 60  # her saat başı çek (günde ~24 req)
+
+# Uygulama kimliği + güncelleme kanalı (GitHub Releases)
+# NOT: Depo adı değişirse burayı güncelleyin (Ayarlar'daki GitHub
+# bağlantısıyla aynı depoyu göstermelidir).
+from deprem_izleme.version import __version__ as APP_VERSION
+from deprem_izleme.version import APP_NAME
+GITHUB_OWNER = "canyrtcn"
+GITHUB_REPO = "deprem-analiz-marmara"
+GITHUB_URL = f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}"
+GITHUB_API_LATEST = (
+    f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
+)
+# Release'e eklenen taşınabilir paket adı (build.py --release ile üretilir)
+UPDATE_ASSET_NAME = "deprem-analiz-marmara-win64.zip"

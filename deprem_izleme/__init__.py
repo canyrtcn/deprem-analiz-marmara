@@ -1,1 +1,1 @@
-# deprem_izleme - Marmara Denizi & İstanbul Deprem İzleme ve Risk Analiz Sistemi
+# deprem_izleme - Deprem Analiz - Marmara (Marmara Denizi & İstanbul deprem analiz sistemi)

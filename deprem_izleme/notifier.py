@@ -212,7 +212,7 @@ def format_risk_alert(risk_report, prediction):
         f" {prediction['prediction_window_days']} gun icinde M>={prediction['min_magnitude_of_interest']} olasiligi: %{prediction['probability']*100:.1f}",
         f" Beklenen en buyuk: M{prediction.get('max_likely_magnitude', '?')}",
         "",
-        "🤖 _Deprem Izleme Sistemi - Bilimsel Risk Analizi_",
+        "🤖 _Deprem Analiz - Marmara_",
     ]
     return "\n".join(lines)
 
@@ -234,7 +234,7 @@ def format_daily_summary(stats, quake_count_24h):
     if stats.get("max_mag_expected"):
         lines.append(f"📈 Beklenen Mmax: M{stats['max_mag_expected']}")
     lines.append("")
-    lines.append("🤖 _Deprem Izleme Sistemi_")
+    lines.append("🤖 _Deprem Analiz - Marmara_")
     return "\n".join(lines)
 
 
@@ -309,10 +309,10 @@ def send_test_message():
         return False
 
     msg = (
-        "🧪 **Deprem Izleme Sistemi Test**\n\n"
+        "🧪 **Deprem Analiz - Marmara Test**\n\n"
         "Merhaba! Bu bir test mesajidir.\n"
         "Sistem calisiyor ve bildirimler aktif.\n\n"
-        "🤖 _Deprem Izleme_"
+        "🤖 _Deprem Analiz - Marmara_"
     )
     ok = send_telegram_message(msg)
     log_notification("test", "manuel test", ok)

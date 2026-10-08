@@ -1,5 +1,5 @@
 """
-Deprem İzleme Sistemi - Modern GUI (CustomTkinter)
+Deprem Analiz - Marmara - Modern GUI (CustomTkinter)
 Ana Sayfa | Risk Analizi | Tekrarlama | Harita | Geçmiş | Ayarlar
 """
 import sys
@@ -152,7 +152,7 @@ class DepremGUI(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Deprem İzleme Sistemi — Marmara Bölgesi")
+        self.title("Deprem Analiz - Marmara")
         self.geometry("1360x820")
         self.minsize(1100, 700)
         self._alive = True
@@ -231,6 +231,8 @@ class DepremGUI(ctk.CTk):
         self._safe_after(2500, self._prebuild_pages)
         self._safe_after(15000, self._refresh_if_stale)
         self._safe_after(250, self._drain_ui_queue)
+        self._safe_after(1200, self._maybe_show_welcome)
+        self._safe_after(25000, self._update_auto_check)
         try:
             threading.Thread(target=self._early_backfill, daemon=True).start()
         except Exception:
@@ -366,7 +368,7 @@ class DepremGUI(ctk.CTk):
             ctk.CTkLabel(tf, text="", image=self._logo_img).pack(side="left", padx=(0, 10))
         tt = ctk.CTkFrame(tf, fg_color="transparent")
         tt.pack(side="left")
-        ctk.CTkLabel(tt, text="Deprem İzleme", font=ctk.CTkFont(size=18, weight="bold"),
+        ctk.CTkLabel(tt, text="Deprem Analiz", font=ctk.CTkFont(size=18, weight="bold"),
                      text_color=COLOR_TEXT).pack(anchor="w")
         ctk.CTkLabel(tt, text="Marmara Bölgesi · Risk Analizi", font=ctk.CTkFont(size=11),
                      text_color=COLOR_ACCENT).pack(anchor="w", pady=(2, 14))
@@ -2150,6 +2152,60 @@ class DepremGUI(ctk.CTk):
             font=ctk.CTkFont(size=10), text_color=COLOR_TEXT, justify="left"
         ).pack(anchor="w", padx=14, pady=(0, 12))
 
+        # --- Uygulama (sürüm + GitHub + lisans) ---
+        try:
+            from deprem_izleme.config import APP_VERSION, APP_NAME, GITHUB_URL
+        except Exception:
+            APP_VERSION, APP_NAME, GITHUB_URL = "?", "Deprem Analiz - Marmara", ""
+        app_card = self._make_card(p, "Uygulama")
+        app_card.pack(fill="x", padx=28, pady=5)
+        app_inner = ctk.CTkFrame(app_card, fg_color="transparent")
+        app_inner.pack(fill="x", padx=14, pady=(0, 14))
+        ctk.CTkLabel(app_inner,
+                     text=f"{APP_NAME}  •  Sürüm v{APP_VERSION}  •  Lisans: MIT",
+                     font=ctk.CTkFont(size=11),
+                     text_color=COLOR_TEXT).pack(anchor="w", pady=(0, 6))
+        abtn = ctk.CTkFrame(app_inner, fg_color="transparent")
+        abtn.pack(anchor="w")
+        ctk.CTkButton(abtn, text="GitHub'da Aç", font=ctk.CTkFont(size=10),
+                      fg_color=COLOR_BTN_SEC_BG, hover_color=COLOR_BTN_SEC_HOVER,
+                      text_color=COLOR_TEXT, border_width=1, border_color=COLOR_CARD_BORDER,
+                      command=lambda: self._open_external(GITHUB_URL),
+                      height=28, width=110).pack(side="left", padx=(0, 6))
+        ctk.CTkButton(abtn, text="Tanıtımı Göster", font=ctk.CTkFont(size=10),
+                      fg_color=COLOR_BTN_SEC_BG, hover_color=COLOR_BTN_SEC_HOVER,
+                      text_color=COLOR_TEXT, border_width=1, border_color=COLOR_CARD_BORDER,
+                      command=lambda: self._show_welcome(preview=True),
+                      height=28, width=120).pack(side="left")
+
+        # --- Güncellemeler ---
+        upd_card = self._make_card(p, "Güncellemeler")
+        upd_card.pack(fill="x", padx=28, pady=(5, 20))
+        upd_inner = ctk.CTkFrame(upd_card, fg_color="transparent")
+        upd_inner.pack(fill="x", padx=14, pady=(0, 14))
+        self.upd_auto = ctk.CTkSwitch(upd_inner, text="Açılışta otomatik denetle",
+                                      font=ctk.CTkFont(size=11),
+                                      command=self._save_upd_pref)
+        self.upd_auto.pack(anchor="w", pady=(0, 6))
+        try:
+            from deprem_izleme.config import load_settings as _lsu
+            if _lsu().get("auto_update_check", True):
+                self.upd_auto.select()
+            else:
+                self.upd_auto.deselect()
+        except Exception:
+            pass
+        urow = ctk.CTkFrame(upd_inner, fg_color="transparent")
+        urow.pack(anchor="w")
+        ctk.CTkButton(urow, text="Güncellemeleri Denetle", font=ctk.CTkFont(size=10),
+                      fg_color=COLOR_ACCENT_DEEP,
+                      command=self.check_update_manual,
+                      height=28, width=160).pack(side="left", padx=(0, 10))
+        self.upd_status = ctk.CTkLabel(urow, text=f"Yüklü sürüm: v{APP_VERSION}",
+                                       font=ctk.CTkFont(size=10),
+                                       text_color=COLOR_TEXT2)
+        self.upd_status.pack(side="left")
+
     # ================================================================
     # BACKGROUND WORKER
     # ================================================================
@@ -2187,6 +2243,229 @@ class DepremGUI(ctk.CTk):
         if _mb.askyesno("Tema Değişti",
                         "Yeni tema için uygulama yeniden başlatılsın mı?"):
             self._restart_app()
+
+    # ---------------------------------------------------------------
+    # Karşılama (ilk çalıştırma) + güncelleme
+    # ---------------------------------------------------------------
+    def _maybe_show_welcome(self):
+        """İlk açılışta API kurulum kutusu (güncellemelerde tekrar çıkmaz)."""
+        try:
+            from deprem_izleme.config import load_settings, save_settings
+            if load_settings().get("welcome_shown"):
+                return
+        except Exception:
+            pass
+        try:
+            self._show_welcome()
+        except Exception as ex:
+            try:
+                from deprem_izleme.errors import log_error
+                log_error(ex, "welcome")
+            except Exception:
+                pass
+
+    def _show_welcome(self, preview=False):
+        """Sismik Harita API kurulum rehberi. preview=True: ayarlardan tekrar gösterim."""
+        import customtkinter as ctk
+        try:
+            from deprem_izleme.config import save_settings
+        except Exception:
+            save_settings = None
+        win = ctk.CTkToplevel(self)
+        win.title("Deprem Analiz - Marmara'ya Hoş Geldiniz")
+        win.geometry("560x470")
+        win.resizable(False, False)
+        try:
+            win.transient(self)
+        except Exception:
+            pass
+        try:
+            win.grab_set()
+        except Exception:
+            pass
+        closed = {"done": False}
+
+        def _finish():
+            if closed["done"]:
+                return
+            closed["done"] = True
+            if not preview and save_settings:
+                try:
+                    save_settings({"welcome_shown": True})
+                except Exception:
+                    pass
+            try:
+                win.grab_release()
+            except Exception:
+                pass
+            try:
+                win.destroy()
+            except Exception:
+                pass
+
+        try:
+            win.protocol("WM_DELETE_WINDOW", _finish)
+        except Exception:
+            pass
+        ctk.CTkLabel(win, text="Deprem Analiz - Marmara'ya Hoş Geldiniz",
+                     font=ctk.CTkFont(size=18, weight="bold"),
+                     text_color=COLOR_TEXT).pack(anchor="w", padx=24, pady=(22, 4))
+        ctk.CTkLabel(win, text="Veri kaynağını 2 dakikada bağlayın",
+                     font=ctk.CTkFont(size=12),
+                     text_color=COLOR_TEXT2).pack(anchor="w", padx=24, pady=(0, 12))
+        steps = ctk.CTkFrame(win, fg_color=COLOR_CARD_BG, corner_radius=10,
+                             border_width=1, border_color=COLOR_CARD_BORDER)
+        steps.pack(fill="x", padx=24, pady=(0, 12))
+        body = (
+            "1. API anahtarı ZORUNLU DEĞİL — anahtarsız günde 100 istek kullanırsınız.\n\n"
+            "2. Anahtarınız varsa: sol menüden Ayarlar → Sismik Harita API bölümüne\n"
+            "    yapıştırın → Kaydet → Bağlantıyı Test Et düğmesine basın.\n\n"
+            "3. Anahtarı sismikharita.com adresinden edinebilirsiniz\n"
+            "    (aşağıdaki düğme siteyi tarayıcıda açar)."
+        )
+        ctk.CTkLabel(steps, text=body, font=ctk.CTkFont(size=12),
+                     text_color=COLOR_TEXT, justify="left",
+                     anchor="w").pack(anchor="w", padx=16, pady=14)
+        btns = ctk.CTkFrame(win, fg_color="transparent")
+        btns.pack(fill="x", padx=24, pady=(0, 20))
+        ctk.CTkButton(btns, text="Siteyi Aç", font=ctk.CTkFont(size=11),
+                      fg_color=COLOR_BTN_SEC_BG, hover_color=COLOR_BTN_SEC_HOVER,
+                      text_color=COLOR_TEXT, border_width=1, border_color=COLOR_CARD_BORDER,
+                      command=lambda: self._open_url("https://sismikharita.com"),
+                      height=32, width=110).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(btns, text="Ayarlar'a Git", font=ctk.CTkFont(size=11),
+                      fg_color=COLOR_BTN_SEC_BG, hover_color=COLOR_BTN_SEC_HOVER,
+                      text_color=COLOR_TEXT, border_width=1, border_color=COLOR_CARD_BORDER,
+                      command=lambda: (self.switch_page("ayarlar"), _finish()),
+                      height=32, width=110).pack(side="left", padx=8)
+        ctk.CTkButton(btns, text="Başla", font=ctk.CTkFont(size=11),
+                      fg_color=COLOR_ACCENT_DEEP,
+                      command=_finish, height=32, width=110).pack(side="right")
+
+    def _open_external(self, url):
+        """Ayarlar/GitHub bağlantıları için bağımsız URL açıcı."""
+        try:
+            import webbrowser
+            u = (url or "").strip()
+            if u.lower().startswith(("http://", "https://")):
+                webbrowser.open(u)
+        except Exception:
+            pass
+
+    def _save_upd_pref(self):
+        try:
+            from deprem_izleme.config import save_settings
+            save_settings({"auto_update_check": bool(self.upd_auto.get())})
+        except Exception:
+            pass
+
+    def check_update_manual(self):
+        """Ayarlar düğmesi: güncellemeyi denetle (arka plan)."""
+        try:
+            self.upd_status.configure(text="Denetleniyor...", text_color=COLOR_WARNING)
+        except Exception:
+            pass
+        threading.Thread(target=self._update_check_worker, args=(True,), daemon=True).start()
+
+    def _update_auto_check(self):
+        """Açılışta sessiz denetim (ayar açıksa)."""
+        try:
+            from deprem_izleme.config import load_settings
+            if not load_settings().get("auto_update_check", True):
+                return
+        except Exception:
+            pass
+        threading.Thread(target=self._update_check_worker, args=(False,), daemon=True).start()
+
+    def _update_check_worker(self, manual):
+        try:
+            from deprem_izleme import updater as _upd
+            info = _upd.check_for_updates()
+        except Exception as ex:
+            info = None
+            try:
+                from deprem_izleme.errors import log_error
+                log_error(ex, "update-check")
+            except Exception:
+                pass
+        self._post_ui(lambda: self._update_check_done(info, manual))
+
+    def _update_check_done(self, info, manual):
+        try:
+            from deprem_izleme.config import APP_VERSION
+        except Exception:
+            APP_VERSION = "?"
+        if not info:
+            try:
+                self.upd_status.configure(text=f"Güncel (v{APP_VERSION})",
+                                          text_color=COLOR_SUCCESS)
+            except Exception:
+                pass
+            if manual:
+                try:
+                    from tkinter import messagebox as _mb
+                    _mb.showinfo("Güncelleme", f"Uygulama güncel (v{APP_VERSION}).")
+                except Exception:
+                    pass
+            return
+        try:
+            self.upd_status.configure(text=f"Yeni sürüm: v{info['version']}",
+                                      text_color=COLOR_WARNING)
+        except Exception:
+            pass
+        try:
+            from tkinter import messagebox as _mb
+            notes = (info.get("notes") or "")[:600]
+            msg = (f"Yeni sürüm bulundu: v{info['version']} "
+                   f"(yüklü: v{APP_VERSION}).\n\n{notes}\n\nŞimdi güncellensin mi?\n"
+                   f"(Verileriniz korunur.)")
+            if _mb.askyesno("Güncelleme Var", msg):
+                self._start_update_apply(info)
+        except Exception:
+            pass
+
+    def _start_update_apply(self, info):
+        try:
+            self.upd_status.configure(text="İndiriliyor...", text_color=COLOR_WARNING)
+        except Exception:
+            pass
+        threading.Thread(target=self._update_apply_worker, args=(info,), daemon=True).start()
+
+    def _update_apply_worker(self, info):
+        try:
+            from deprem_izleme import updater as _upd
+            ok, msg = _upd.download_and_apply(info, on_quit=self._quit_for_update)
+        except Exception as ex:
+            ok, msg = False, f"Hata: {ex}"
+        self._post_ui(lambda: self._update_apply_done(ok, msg, info))
+
+    def _update_apply_done(self, ok, msg, info):
+        try:
+            self.upd_status.configure(text=msg,
+                                      text_color=COLOR_SUCCESS if ok else COLOR_DANGER)
+        except Exception:
+            pass
+        if not ok:
+            try:
+                from tkinter import messagebox as _mb
+                page = (info or {}).get("page", "")
+                _mb.showwarning("Güncelleme", f"{msg}\n{page}")
+            except Exception:
+                pass
+
+    def _quit_for_update(self):
+        """Güncelleyici .bat devralır; uygulamayı sessizce kapat."""
+        try:
+            self._alive = False
+            self.bg_running = False
+            self.destroy()
+        except Exception:
+            pass
+        try:
+            import os as _o
+            _o._exit(0)
+        except Exception:
+            pass
 
     def _on_theme_dashboard(self, choice):
         from deprem_izleme.config import save_settings
@@ -2887,7 +3166,7 @@ class DepremGUI(ctk.CTk):
         try:
             import requests
             from deprem_izleme.config import FETCH_TIMEOUT
-            headers = {"User-Agent": "DepremIzleme/1.0"}
+            headers = {"User-Agent": "DepremAnaliz-Marmara/1.0"}
             if key:
                 headers["Authorization"] = f"Bearer {key}"
             r = requests.get(base + "/api.php", params={"limit": 1},

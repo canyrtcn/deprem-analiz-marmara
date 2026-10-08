@@ -1,5 +1,5 @@
 """
-Deprem İzleme Sistemi - GUI Başlatıcı
+Deprem Analiz - Marmara - GUI Başlatıcı
 """
 import sys
 import os

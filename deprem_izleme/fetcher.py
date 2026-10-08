@@ -63,7 +63,7 @@ def fetch_earthquakes(days_back=7, min_magnitude=0.0, sources=None):
     }
 
     logger.info(f"API isteği: {days_back}g geri, M>={min_magnitude}, limit={API_LIMIT}")
-    headers = {"User-Agent": "DepremIzleme/1.0"}
+    headers = {"User-Agent": "DepremAnaliz-Marmara/1.0"}
     api_key = get_api_key()
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
