@@ -2482,8 +2482,7 @@ class DepremGUI(ctk.CTk):
                     from tkinter import messagebox as _mb
                     _mb.showwarning("Güncelleme",
                                     f"Sürüm denetlenemedi:\n{info['error']}\n\n"
-                                    f"Depo gizliyse otomatik denetim çalışmaz; "
-                                    f"GitHub Releases sayfasından el ile bakın.")
+                                    f"Daha sonra tekrar deneyin.")
                 except Exception:
                     pass
             return
