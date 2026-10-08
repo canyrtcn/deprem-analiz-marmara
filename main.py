@@ -43,8 +43,22 @@ def cmd_fetch(args):
         min_magnitude=args.min_mag or 0.0,
         sources=args.sources,
     )
+    _bump_cli_counter()
     print(f"{count} yeni deprem kaydedildi.")
     return count
+
+
+def _bump_cli_counter(n=1):
+    """CLI çekişlerini kalıcı kotaya işle (GUI sayacıyla aynı havuz)."""
+    try:
+        import datetime as _dt
+        from deprem_izleme.config import load_settings, save_settings
+        today = _dt.date.today().isoformat()
+        s = load_settings()
+        cur = s.get("api_used", 0) + n if s.get("api_date") == today else n
+        save_settings({"api_used": cur, "api_date": today})
+    except Exception:
+        pass
 
 
 def cmd_update(args):
@@ -52,6 +66,8 @@ def cmd_update(args):
     # 1. Fetch son depremler
     logger.info("Adım 1: Deprem verileri çekiliyor...")
     count = fetch_recent_and_store(min_magnitude=1.0) if args.fetch else 0
+    if args.fetch:
+        _bump_cli_counter()
 
     # 2. Haftalık istatistik
     logger.info("Adım 2: Haftalık istatistikler hesaplanıyor...")
