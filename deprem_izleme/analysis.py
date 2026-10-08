@@ -179,7 +179,9 @@ def interpret_now(risk_report, prediction):
     else:
         lines.append(f"Birleşik risk {lvl} düzeyde — sismik tablo sakin.")
     b = risk_report["gutenberg_richter"]["b_value"]
-    if b < 0.8:
+    if risk_report.get("no_data") or risk_report.get("quake_count", 0) < 10:
+        lines.append("b-değeri ölçülemedi (yeterli veri yok).")
+    elif b < 0.8:
         lines.append("b-değeri düşük; bölgede gerilim birikimi olabilir.")
     elif b > 1.2:
         lines.append("b-değeri yüksek; gerilim görece düşük görünüyor.")
