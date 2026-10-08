@@ -19,6 +19,6 @@ jobs:
       - name: Bagimliliklar
         run: pip install -r requirements.txt
       - name: Derleme kontrolu
-        run: python -m py_compile main.py run_gui.py deprem_izleme/*.py scripts/check_secrets.py tests/*.py
+        run: python -m compileall -q main.py run_gui.py deprem_izleme scripts tests
       - name: Regresyon suitii
         run: python tests/run_tests.py
