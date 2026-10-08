@@ -11,7 +11,6 @@
 
 **Deprem Analiz — Marmara**, Python, CustomTkinter ve SQLite ile geliştirilmiş açık kaynaklı bir Windows masaüstü uygulamasıdır. Deprem kayıtlarını yerel olarak saklar, geçmiş etkinliği analiz eder ve isteğe bağlı Telegram bildirimleri sunar.
 
-> [!IMPORTANT]
 > ### ⚠️ Önemli
 >
 > **Depremlerin zamanı, yeri ve büyüklüğü önceden kesin olarak tahmin edilemez.** Bu proje, deprem verilerini analiz etmek ve bilimsel modelleri görselleştirmek amacıyla geliştirilmiş **deneysel bir uygulamadır; erken uyarı sistemi değildir.** İstatistiksel model çıktıları kesin deprem tahmini olarak değerlendirilmemelidir. Resmî duyurular için [AFAD](https://www.afad.gov.tr/) ve [Kandilli Rasathanesi](https://www.koeri.boun.edu.tr/) kaynaklarını takip edin.
