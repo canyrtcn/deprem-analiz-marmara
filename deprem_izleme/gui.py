@@ -2397,7 +2397,10 @@ class DepremGUI(ctk.CTk):
             pass
 
     def check_update_manual(self):
-        """Ayarlar düğmesi: güncellemeyi denetle (arka plan)."""
+        """Ayarlar düğmesi: güncellemeyi denetle (arka plan, tekil)."""
+        if getattr(self, "_update_check_running", False):
+            return
+        self._update_check_running = True
         try:
             self.upd_status.configure(text="Denetleniyor...", text_color=COLOR_WARNING)
         except Exception:
@@ -2405,13 +2408,16 @@ class DepremGUI(ctk.CTk):
         threading.Thread(target=self._update_check_worker, args=(True,), daemon=True).start()
 
     def _update_auto_check(self):
-        """Açılışta sessiz denetim (ayar açıksa)."""
+        """Açılışta sessiz denetim (ayar açıksa, tekil)."""
+        if getattr(self, "_update_check_running", False):
+            return
         try:
             from deprem_izleme.config import load_settings
             if not load_settings().get("auto_update_check", True):
                 return
         except Exception:
             pass
+        self._update_check_running = True
         threading.Thread(target=self._update_check_worker, args=(False,), daemon=True).start()
 
     def _update_check_worker(self, manual):
@@ -2423,6 +2429,11 @@ class DepremGUI(ctk.CTk):
             try:
                 from deprem_izleme.errors import log_error
                 log_error(ex, "update-check")
+            except Exception:
+                pass
+        finally:
+            try:
+                self._update_check_running = False
             except Exception:
                 pass
         self._post_ui(lambda: self._update_check_done(info, manual))
