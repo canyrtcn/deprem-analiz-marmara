@@ -1896,6 +1896,7 @@ class DepremGUI(ctk.CTk):
                     else:
                         self.news_status.configure(text="⛔ Güvenli olmayan bağlantı engellendi",
                                                    text_color=COLOR_DANGER)
+                    return "break"  # karta da bağlı: çift açılmayı önler
 
                 lbl.bind("<Button-1>", _open_news)
                 lbl.bind("<Enter>", lambda e, l=lbl: l.configure(text_color=COLOR_INFO))
