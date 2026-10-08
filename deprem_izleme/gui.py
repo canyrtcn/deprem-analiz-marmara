@@ -9,7 +9,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import threading
 import queue
 import json
-import time
 import math
 import tkinter as _tk
 from datetime import datetime, timedelta
@@ -1957,7 +1956,8 @@ class DepremGUI(ctk.CTk):
                      font=ctk.CTkFont(size=11), text_color=COLOR_TEXT).grid(row=1, column=0, pady=5, sticky="w")
         self.bg_interval_combo = ctk.CTkComboBox(
             bg_inner, values=[f"{i} dakika" for i in REFRESH_INTERVALS],
-            font=ctk.CTkFont(size=11), state="readonly", width=120
+            font=ctk.CTkFont(size=11), state="readonly", width=120,
+            command=self._on_bg_interval
         )
         self.bg_interval_combo.grid(row=1, column=0, padx=(120, 0), pady=5, sticky="w")
         self.bg_interval_combo.set("60 dakika")
@@ -2517,7 +2517,15 @@ class DepremGUI(ctk.CTk):
             self.bg_running = False
             self.bg_status.configure(text="⏸️ Durduruldu", text_color=COLOR_TEXT2)
 
+    def _on_bg_interval(self, choice):
+        """Aralık değişimi ana thread'de önbelleğe alınır (worker okur)."""
+        try:
+            self.bg_interval = int(str(choice).split()[0])
+        except Exception:
+            pass
+
     def _bg_loop(self):
+        import time as _lt
         while self.bg_running:
             now = datetime.now()
             # Günlük sayacı sıfırla
@@ -2527,11 +2535,6 @@ class DepremGUI(ctk.CTk):
 
             if self.daily_request_count < DAILY_LIMIT:
                 try:
-                    # Parse interval
-                    interval_text = self.bg_interval_combo.get()
-                    minutes = int(interval_text.split()[0])
-                    self.bg_interval = minutes
-
                     # Fetch (atla hata olursa, sıraya alma)
                     try:
                         c = fetch_and_store(days_back=3, min_magnitude=0.0)
@@ -2559,11 +2562,13 @@ class DepremGUI(ctk.CTk):
                 self._post_ui( lambda: self.bg_status.configure(
                     text=f"⏸️ Limit doldu ({DAILY_LIMIT}/{DAILY_LIMIT})", text_color=COLOR_WARNING))
 
-            # Bekle (interval kadar)
-            for _ in range(self.bg_interval * 6):  # 10'ar saniye check
-                if not self.bg_running:
-                    return
-                time.sleep(10)
+            # Bekle (10'ar sn dilimlerle; aralık değişimi anında geçerli olur)
+            try:
+                end = _lt.monotonic() + int(self.bg_interval) * 60
+            except Exception:
+                end = _lt.monotonic() + 3600
+            while self.bg_running and _lt.monotonic() < end:
+                _lt.sleep(10)
 
     def _update_bg_ui(self):
         self.refresh_all()
