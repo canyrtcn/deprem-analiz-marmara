@@ -2471,6 +2471,22 @@ class DepremGUI(ctk.CTk):
             from deprem_izleme.config import APP_VERSION
         except Exception:
             APP_VERSION = "?"
+        if info and info.get("error"):
+            try:
+                self.upd_status.configure(text="Denetlenemedi (ağ/depo)",
+                                          text_color=COLOR_WARNING)
+            except Exception:
+                pass
+            if manual:
+                try:
+                    from tkinter import messagebox as _mb
+                    _mb.showwarning("Güncelleme",
+                                    f"Sürüm denetlenemedi:\n{info['error']}\n\n"
+                                    f"Depo gizliyse otomatik denetim çalışmaz; "
+                                    f"GitHub Releases sayfasından el ile bakın.")
+                except Exception:
+                    pass
+            return
         if not info:
             try:
                 self.upd_status.configure(text=f"Güncel (v{APP_VERSION})",

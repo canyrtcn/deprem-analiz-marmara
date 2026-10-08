@@ -65,8 +65,9 @@ def is_newer(remote, local=APP_VERSION):
 def check_for_updates(timeout=CHECK_TIMEOUT):
     """Son release'i denetle.
 
-    Döner: None (güncel / erişilemez) veya
-    {"version": "1.1.0", "notes": "...", "url": "<zip>", "page": "<release sayfası>"}.
+    Döner: None (güncel / release yok) veya
+    {"version": ..., "notes": ..., "url": ..., "page": ...} (yeni sürüm) veya
+    {"error": ...} (ağ/depo erişilemedi - ör. gizli depo + yetkisiz erişim).
     Hiçbir durumda exception fırlatmaz.
     """
     try:
@@ -77,7 +78,7 @@ def check_for_updates(timeout=CHECK_TIMEOUT):
             timeout=timeout,
         )
         if resp.status_code == 404:
-            # Henüz release yok (gizli depo / ilk sürüm öncesi)
+            # Henüz release yok (veya gizli depoya yetkisiz erişim)
             return None
         resp.raise_for_status()
         data = resp.json()
@@ -97,7 +98,7 @@ def check_for_updates(timeout=CHECK_TIMEOUT):
         }
     except Exception as e:
         logger.info(f"Güncelleme denetimi atlandı: {e}")
-        return None
+        return {"error": str(e)[:150]}
 
 
 def _app_dir():
