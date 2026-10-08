@@ -121,13 +121,12 @@ def fetch_and_store(days_back=7, min_magnitude=0.0, sources=None):
         return 0
 
     # Yinelenenleri event_id ile ele (zaman damgasına göre değil: geç
-    # yayınlanan eski depremler de kaçırılmamalı).
+    # yayınlanan eski depremler de kaçırılmamalı; tarih formatı ne olursa
+    # olsun tüm tablo taranır.
     conn = get_db(MAIN_DB)
     try:
-        since_str = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
         existing = {r[0] for r in
-                    conn.execute("SELECT event_id FROM earthquakes WHERE occurred_at >= ?",
-                                 (since_str,)).fetchall() if r[0]}
+                    conn.execute("SELECT event_id FROM earthquakes").fetchall() if r[0]}
     finally:
         conn.close()
 
