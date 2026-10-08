@@ -1704,29 +1704,18 @@ class DepremGUI(ctk.CTk):
 
     def _attach_grafikler_chart(self, fig, figs2, n_quakes, days):
         """4 panelli + 4 dağılım figürünü Tk'ya bağla - SADECE ana thread'den."""
-        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
         for w in self.chart_canvas_frame.winfo_children():
             w.destroy()
-        canvas = FigureCanvasTkAgg(fig, master=self.chart_canvas_frame)
-        try:
-            canvas.get_tk_widget().configure(highlightthickness=0, bd=0)
-        except Exception:
-            pass
+        from deprem_izleme.charts import _attach_canvas as _ac1
+        canvas, fig = _ac1(self.chart_canvas_frame, fig)
         canvas.get_tk_widget().pack(fill="both", expand=True)
-        canvas.draw()
         self.chart_canvas = canvas
         self.chart_fig = fig
         for frame, fig2 in zip(getattr(self, "dist_frames", []), figs2 or []):
-            for w in frame.winfo_children():
-                w.destroy()
             try:
-                c2 = FigureCanvasTkAgg(fig2, master=frame)
-                try:
-                    c2.get_tk_widget().configure(highlightthickness=0, bd=0)
-                except Exception:
-                    pass
+                from deprem_izleme.charts import _attach_canvas as _ac2
+                c2, _f2 = _ac2(frame, fig2)
                 c2.get_tk_widget().pack(fill="both", expand=True)
-                c2.draw()
             except Exception:
                 pass
         self.chart_status.configure(
@@ -1802,16 +1791,11 @@ class DepremGUI(ctk.CTk):
 
     def _draw_fullscreen_chart(self, parent_frame):
         """Tam ekran için büyük grafik."""
-        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
         from deprem_izleme.charts import build_fullscreen_figure
         fig = build_fullscreen_figure(days=self.chart_days)
-        canvas = FigureCanvasTkAgg(fig, master=parent_frame)
-        try:
-            canvas.get_tk_widget().configure(highlightthickness=0, bd=0)
-        except Exception:
-            pass
+        from deprem_izleme.charts import _attach_canvas as _ac3
+        canvas, _ff = _ac3(parent_frame, fig)
         canvas.get_tk_widget().pack(fill="both", expand=True)
-        canvas.draw()
 
     # ================================================================
     # 8. HABERLER
@@ -2614,11 +2598,6 @@ class DepremGUI(ctk.CTk):
     def refresh_all(self):
         def worker():
             try:
-                try:
-                    from deprem_izleme.errors import diag
-                    diag("refresh worker basladi")
-                except Exception:
-                    pass
                 # Geçmiş tablolarını doldur (veri geldikçe tamamlanır)
                 self._maybe_backfill()
                 self._refreshed_once = True

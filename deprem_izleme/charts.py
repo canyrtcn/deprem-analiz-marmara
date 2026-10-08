@@ -213,8 +213,26 @@ def build_daily_count_figure(days=30, width=4, height=2.5):
 
 
 def _attach_canvas(parent_frame, fig):
-    """Figürü Tk'ya bağla - SADECE ana thread'den çağır."""
+    """Figürü Tk'ya bağla - SADECE ana thread'den çağır.
+
+    Değişimde eski figürler temizlenir (clf), yoksa her yenilemede
+    megabaytlarca figür bellekte kalır.
+    """
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    for w in list(parent_frame.winfo_children()):
+        try:
+            w.destroy()
+        except Exception:
+            pass
+    for _old in (getattr(parent_frame, "_mpl_figs", None) or []):
+        try:
+            _old.clf()
+        except Exception:
+            pass
+    try:
+        parent_frame._mpl_figs = [fig]
+    except Exception:
+        pass
     canvas = FigureCanvasTkAgg(fig, master=parent_frame)
     try:
         canvas.get_tk_widget().configure(highlightthickness=0, bd=0)
