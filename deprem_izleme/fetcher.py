@@ -114,6 +114,8 @@ def fetch_and_store(days_back=7, min_magnitude=0.0, sources=None):
     """
     quakes = fetch_earthquakes(days_back, min_magnitude, sources)
     fetch_and_store.truncated = len(quakes) >= API_LIMIT
+    if fetch_and_store.truncated:
+        logger.warning(f"API {API_LIMIT} limitine takıldı ({len(quakes)} kayıt) - katalog eksik olabilir.")
     if not quakes:
         logger.info("Kaydedilecek yeni deprem yok.")
         return 0
