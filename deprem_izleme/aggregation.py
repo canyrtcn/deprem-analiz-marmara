@@ -193,6 +193,21 @@ def poisson_probability(lambda_rate, time_window_days=7):
     return 1 - math.exp(-lambda_rate * time_window_days)
 
 
+def gr_rate_m4(a_value, b_value, t_obs_days=30.0):
+    """GR dışdeğerlemesinden M≥4 günlük hız: λ = 10^(a−4b)/T_obs.
+
+    Gözlenen M≥4 yoksa gözlenen hız 0 çıkar ve olasılık %0 görünür
+    (imkânsızmış gibi — YANLIŞ mesaj). GR yasası aynı katalogdan
+    büyük-magnitüd hızını tahmin eder; bu fonksiyon o yedek hızı verir.
+    """
+    try:
+        if b_value <= 0 or t_obs_days <= 0:
+            return 0.0
+        return (10 ** (a_value - b_value * 4.0)) / t_obs_days
+    except Exception:
+        return 0.0
+
+
 def estimate_lambda(earthquakes, min_mag=None, declustered=False):
     """
     Günlük olay hızı λ (lambda) tahmini.
@@ -709,8 +724,13 @@ def get_comprehensive_risk_report(region="marmara", max_age=45):
     lambda_m4 = estimate_lambda(quakes, min_mag=4.0)
     lambda_m3_bg = estimate_lambda(quakes, min_mag=3.0, declustered=True)
     lambda_m4_bg = estimate_lambda(quakes, min_mag=4.0, declustered=True)
-    p_m4_7days = poisson_probability(lambda_m4_bg, 7)
-    p_m4_30days = poisson_probability(lambda_m4_bg, 30)
+    # Gözlenen M≥4 yoksa hız 0 çıkar (%0.0 imkânsızmış gibi görünür).
+    # Yedek: aynı kataloğun GR dışdeğerlemesi (etiketlenir).
+    lambda_m4_gr = gr_rate_m4(a_val, b_val, 30.0)
+    lambda_m4_eff = lambda_m4_bg if lambda_m4_bg > 0 else lambda_m4_gr
+    m4_gr_used = lambda_m4_bg <= 0 and lambda_m4_gr > 0
+    p_m4_7days = poisson_probability(lambda_m4_eff, 7)
+    p_m4_30days = poisson_probability(lambda_m4_eff, 30)
 
     z = detect_anomalous_activity(quakes)
     m_max_expected = expected_max_magnitude(b_val, a_val)
@@ -771,6 +791,8 @@ def get_comprehensive_risk_report(region="marmara", max_age=45):
             "lambda_m3_per_day": round(lambda_m3, 4),
             "lambda_m4_per_day": round(lambda_m4, 4),
             "lambda_m4_bg_per_day": round(lambda_m4_bg, 4),
+            "lambda_m4_gr_per_day": round(lambda_m4_gr, 6),
+            "p_m4_gr_tahmini": m4_gr_used,
             "p_m4_7days_pct": round(p_m4_7days * 100, 2),
             "p_m4_30days_pct": round(p_m4_30days * 100, 2),
             "declustered": True,

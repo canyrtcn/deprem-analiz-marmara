@@ -186,7 +186,10 @@ def interpret_now(risk_report, prediction):
     else:
         lines.append("b-değeri normal aralıkta (~1.0).")
     p7 = risk_report["poisson"]["p_m4_7days_pct"]
-    lines.append(f"Önümüzdeki 7 günde M≥4.0 olasılığı %{p7:.1f} (istatistiksel tahmin).")
+    if risk_report["poisson"].get("p_m4_gr_tahmini"):
+        lines.append(f"Önümüzdeki 7 günde M≥4.0 olasılığı %{p7:.1f} (GR modelinden; gözlenen M≥4 yok).")
+    else:
+        lines.append(f"Önümüzdeki 7 günde M≥4.0 olasılığı %{p7:.1f} (istatistiksel tahmin).")
     return lines
 
 

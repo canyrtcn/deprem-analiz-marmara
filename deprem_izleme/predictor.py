@@ -66,11 +66,15 @@ class EarthquakePredictor:
         mags_7d = [q["magnitude"] for q in quakes_7d if q.get("magnitude")]
 
         # --- 1. Poisson bazlı olasılık ---
+        # Gözlenen M≥4 yoksa hız 0 çıkar; yedek GR dışdeğerlemesi kullanılır.
+        from deprem_izleme.aggregation import gr_rate_m4
+        b_30, a_30, mc_30 = calculate_b_value(mags_30d)
         lambda_moi = estimate_lambda(quakes_90d, min_mag=min_mag_of_interest)
+        if lambda_moi <= 0:
+            lambda_moi = gr_rate_m4(a_30, b_30, 30.0)
         poisson_prob = poisson_probability(lambda_moi, days_ahead)
 
         # --- 2. Gutenberg-Richter trend ---
-        b_30, a_30, mc_30 = calculate_b_value(mags_30d)
         b_90, a_90, mc_90 = calculate_b_value(mags_90d)
 
         # b-değeri trendi: düşüş = stress artışı
