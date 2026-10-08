@@ -1837,6 +1837,8 @@ class DepremGUI(ctk.CTk):
                 text=f"Hata: {e}", text_color=COLOR_DANGER))
 
     def _display_news(self, news):
+        if not hasattr(self, "news_frame"):
+            return
         for w in self.news_frame.winfo_children():
             w.destroy()
 
@@ -1846,8 +1848,13 @@ class DepremGUI(ctk.CTk):
             self.news_status.configure(text="Haber bulunamadı", text_color=COLOR_WARNING)
             return
 
-        # Haberler
-        haberler = [n for n in news if n.get("tip", "haber") == "haber"] or news
+        # Haberler (bozuk kayıtları ele, bağlantıları kapıdan geçir)
+        def _ok(n):
+            return (isinstance(n, dict) and n.get("tip", "haber") == "haber"
+                    and str(n.get("baslik") or "").strip())
+        haberler = [n for n in (news or []) if _ok(n)] or \
+                   [n for n in (news or [])
+                    if isinstance(n, dict) and str(n.get("baslik") or "").strip()]
         if haberler:
             hab_frame = ctk.CTkFrame(self.news_frame, fg_color=COLOR_CARD_BG, corner_radius=10)
             hab_frame.pack(fill="x", pady=6)
@@ -1856,30 +1863,38 @@ class DepremGUI(ctk.CTk):
                          text_color=COLOR_ACCENT).pack(anchor="w", padx=16, pady=(12, 6))
 
             for n in haberler[:15]:
+                title = str(n.get("baslik", "?"))[:140]
+                source = str(n.get("kaynak", "?"))
+                date = str(n.get("tarih", ""))[:17]
+                link = str(n.get("link", ""))
                 item = ctk.CTkFrame(hab_frame, fg_color=COLOR_INSET, corner_radius=6)
                 item.pack(fill="x", padx=16, pady=3)
                 item.grid_columnconfigure(0, weight=1)
 
                 # Başlık (tıklanabilir - el imleci + hover)
-                lbl = ctk.CTkLabel(item, text=f"{n['baslik']}  →",
+                lbl = ctk.CTkLabel(item, text=f"{title}  →",
                                    font=ctk.CTkFont(size=10),
                                    text_color=COLOR_TEXT, justify="left",
                                    anchor="w", wraplength=650, cursor="hand2")
                 lbl.grid(row=0, column=0, padx=10, pady=(6, 2), sticky="w")
 
                 # Kaynak + tarih
-                ctk.CTkLabel(item, text=f"{n['kaynak']} | {n['tarih'][:17]}",
+                ctk.CTkLabel(item, text=f"{source} | {date}",
                              font=ctk.CTkFont(size=8), text_color=COLOR_TEXT2,
                              anchor="w").grid(row=1, column=0, padx=10, pady=(0, 6), sticky="w")
 
-                def _open_news(_ev=None, url=n["link"]):
-                    try:
-                        import webbrowser as _wb
-                        _wb.open(url)
-                        self.news_status.configure(text="Haber tarayıcıda açıldı",
-                                                   text_color=COLOR_SUCCESS)
-                    except Exception as ex:
-                        self.news_status.configure(text=f"Açılamadı: {ex}",
+                def _open_news(_ev=None, url=link):
+                    if (url or "").strip().lower().startswith(("http://", "https://")):
+                        try:
+                            import webbrowser as _wb
+                            _wb.open(url)
+                            self.news_status.configure(text="Haber tarayıcıda açıldı",
+                                                       text_color=COLOR_SUCCESS)
+                        except Exception as ex:
+                            self.news_status.configure(text=f"Açılamadı: {ex}",
+                                                       text_color=COLOR_DANGER)
+                    else:
+                        self.news_status.configure(text="⛔ Güvenli olmayan bağlantı engellendi",
                                                    text_color=COLOR_DANGER)
 
                 lbl.bind("<Button-1>", _open_news)
