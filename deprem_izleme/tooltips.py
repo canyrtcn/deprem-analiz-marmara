@@ -20,7 +20,8 @@ TOOLTIPS = {
         "log₁₀(N) = a - b·M denklemindeki a değeridir.\n\n"
         "Bölgenin sismik aktivite seviyesini gösterir.\n"
         "Yüksek a = daha fazla deprem aktivitesi.\n"
-        "Genellikle 3-6 arası değişir."
+        "Katalog büyüklüğüne göre değişir\n"
+        "(bu uygulamada tipik ~2-4)."
     ),
     "M≥4.0 7g": (
         "M≥4.0 Deprem Olasılığı (7 Gün)\n\n"
@@ -48,8 +49,8 @@ TOOLTIPS = {
         "Gutenberg-Richter enerji-magnitüd ilişkisi.\n\n"
         "Referans:\n"
         "• M2.0 → 6.3×10⁷ J\n"
-        "• M4.0 → 2.0×10¹⁰ J\n"
-        "• M6.0 → 6.3×10¹² J"
+        "• M4.0 → 6.3×10¹⁰ J\n"
+        "• M6.0 → 6.3×10¹³ J"
     ),
     "Risk Skoru": (
         "Birleşik Risk Skoru (0-1)\n\n"
@@ -118,7 +119,8 @@ TOOLTIPS = {
         "Gutenberg-Richter yasasına göre belirli bir\n"
         "magnitüdeki depremin ortalama tekrarlanma\n"
         "süresi.\n\n"
-        "T(M) = 1 / 10^(a - b·M) gün\n\n"
+        "T(M) = T_obs / 10^(a - b·M)\n"
+        "T_obs: kataloğun zaman genişliği (gün)\n\n"
         "İstatistiksel ortalamadır, kesin periyot\n"
         "değildir."
     ),
@@ -130,8 +132,9 @@ TOOLTIPS = {
         "• Segmente yakın deprem sayısı\n"
         "• En büyük yakın deprem\n"
         "• Segmentin maksimum üretebileceği M\n\n"
-        "Tekirdağ segmenti en yüksek riske sahiptir\n"
-        "(Kutoğlu, 2025)."
+        "Uzun süredir kırılmamış sismik boşluklar\n"
+        "(örn. Tekirdağ) yüksek skor alır.\n"
+        "Skorlar güncel veriye göre değişir."
     ),
     "Stres Transferi": (
         "Coulomb Stres Transferi (ΔCFF)\n\n"

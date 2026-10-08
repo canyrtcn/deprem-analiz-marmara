@@ -285,12 +285,13 @@ def omori_forecast(earthquakes, days_ahead=7, m_cut=3.0):
     Artçı öngörüsü — Omori-Utsu azalımı + Reasenberg-Jones (1989) üretkenliği.
     R(t) = 10^[a + b·(Mm − Mkes)] / (t + c)^p
 
-    Jenerik California parametreleri (R&J 1989): a=−1.67, b=0.91,
-    p=1.08, c=0.05 gün. Marmara'ya kalibre DEĞİLDİR; mertebe tahminidir.
+    Türkiye kalibrasyonu (Müderrisoğlu & Yazgan 2020; Mw≥5.9 Türkiye
+    artçı dizileri): a=−1.90, b=1.11, p=1.20, c=0.05 gün.
     Son 30 gündeki en büyük M≥4.0 olayı ana şok sayılır.
 
     Döner: None (uygun ana şok yok) veya sözlük.
-    Kaynak: Reasenberg & Jones (1989) Science; USGS OAF dokümantasyonu.
+    Kaynak: Muderrisoglu & Yazgan (2020) Earthq. Eng. Eng. Vib. 19:149-160,
+    doi:10.1007/s11803-020-0553-2; Reasenberg & Jones (1989) Science.
     """
     from datetime import datetime as _dt
     now = _dt.now().timestamp()
@@ -303,7 +304,7 @@ def omori_forecast(earthquakes, days_ahead=7, m_cut=3.0):
     mm = main["magnitude"]
     t0 = max((now - main["timestamp"]) / 86400, 0.0)
 
-    a, b, p, c = -1.67, 0.91, 1.08, 0.05
+    a, b, p, c = -1.90, 1.11, 1.20, 0.05  # Türkiye (Muderrisoglu & Yazgan 2020)
     k = 10 ** (a + b * (mm - m_cut))
     if p == 1.0:
         import math as _m
@@ -323,7 +324,7 @@ def omori_forecast(earthquakes, days_ahead=7, m_cut=3.0):
         "days_ahead": days_ahead,
         "expected_count": round(expected, 2),
         "probability": round(prob, 4),
-        "generic_params": True,
+        "params": "TR-2020 (Muderrisoglu & Yazgan)",
     }
 
 

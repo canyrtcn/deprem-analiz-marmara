@@ -148,13 +148,14 @@ class MarmaraMap(tk.Canvas):
         return w, h, sx, sy
 
     def project(self, lon, lat):
+        # Gerçek en-boy: boylam derecesi cos(40.8°) ile kısalır (K ile düzeltme)
         w, h, sx, sy = self._scales()
-        return (w / 2 + (lon - self._cx) * sx,
+        return (w / 2 + (lon - self._cx) * K * sx,
                 h / 2 - (lat - self._cy) * sy)
 
     def unproject(self, x, y):
         w, h, sx, sy = self._scales()
-        return (self._cx + (x - w / 2) / sx,
+        return (self._cx + (x - w / 2) / (K * sx),
                 self._cy - (y - h / 2) / sy)
 
     def zoom(self, factor):
@@ -284,25 +285,29 @@ class MarmaraMap(tk.Canvas):
             if ixy:
                 self.create_polygon(ixy, fill=LAND_COLOR, outline=COAST_LINE, tags=("base",))
 
-        # su etiketi
-        lx, ly = self.project(27.55, 40.62)
+        # su etiketi (orta basen üstü)
+        lx, ly = self.project(28.0, 40.70)
         if 0 <= lx <= w and 0 <= ly <= h and self._span_x > 1.2:
             self.create_text(lx, ly, text="Marmara Denizi", fill=WATER_LBL,
                              font=("Segoe UI", 11, "italic"), tags=("base",))
 
-        # kiyi (kasa + cizgi)
+        # kiyi (kasa + cizgi): parça-bazlı kırpma — görünüm dışına taşan
+        # parçanın iki ucu da elenirse kiriş artefaktı oluşurdu; komşusu
+        # görünür olan nokta korunur.
         for ln in COAST_LINES:
             pts = []
-            for lon, lat in ln:
-                if x0 - 0.5 <= lon <= x1 + 0.5:
+            keep = [(x0 - 0.5 <= lo <= x1 + 0.5) for _, lo in ln]
+            for i, (lon, lat) in enumerate(ln):
+                if keep[i] or (i > 0 and keep[i - 1]) or (i + 1 < len(ln) and keep[i + 1]):
                     pts += list(self.project(lon, lat))
             if len(pts) >= 4:
                 self.create_line(pts, fill=COAST_CASING, width=4,
                                  capstyle="round", joinstyle="round", tags=("base",))
         for ln in COAST_LINES:
             pts = []
-            for lon, lat in ln:
-                if x0 - 0.5 <= lon <= x1 + 0.5:
+            keep = [(x0 - 0.5 <= lo <= x1 + 0.5) for _, lo in ln]
+            for i, (lon, lat) in enumerate(ln):
+                if keep[i] or (i > 0 and keep[i - 1]) or (i + 1 < len(ln) and keep[i + 1]):
                     pts += list(self.project(lon, lat))
             if len(pts) >= 4:
                 self.create_line(pts, fill=COAST_LINE, width=1.3, tags=("base",))

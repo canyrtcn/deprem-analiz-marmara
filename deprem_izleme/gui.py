@@ -1010,9 +1010,12 @@ class DepremGUI(ctk.CTk):
                      text_color=COLOR_ACCENT).pack(anchor="w", padx=14, pady=(12, 4))
         ctk.CTkLabel(info, text=
             "Gutenberg-Richter Yasası: log₁₀(N) = a - b·M\n"
-            "Tekrarlama Aralığı: T(M) = 1 / 10^(a - b·M) gün\n"
+            "Tekrarlama Aralığı: T(M) = T_obs / 10^(a - b·M)\n"
+            "(T_obs: kataloğun zaman genişliği, gün)\n"
             "b-değeri ≈1.0 görece stabil, <0.7 yüksek stress göstergesidir.\n"
-            "Örnek: b=0.9 ise M≥5.0 deprem her ~X yılda bir beklenir.",
+            "Değerler yukarıdaki tabloya güncel katalogdan hesaplanır.\n"
+            "UYARI: Kısa katalogdan (30 gün) M≥6-7 dışdeğerlemesi mertebe\n"
+            "tahminidir; belirsizlik ±1 mertebeyi bulur.",
             font=ctk.CTkFont(size=10), text_color=COLOR_TEXT, justify="left"
         ).pack(anchor="w", padx=14, pady=(0, 12))
 
@@ -1025,7 +1028,7 @@ class DepremGUI(ctk.CTk):
             ctk.CTkLabel(self.rec_inner, text=h, font=ctk.CTkFont(size=10, weight="bold"),
                          text_color=COLOR_ACCENT).grid(row=0, column=i, padx=10, pady=(0, 4), sticky="w")
 
-        for row_idx in range(12):
+        for row_idx in range(11):
             for col in range(3):
                 vl = ctk.CTkLabel(self.rec_inner, text="—", font=ctk.CTkFont(size=11),
                                   text_color=COLOR_TEXT)
@@ -1125,7 +1128,7 @@ class DepremGUI(ctk.CTk):
                      text_color=COLOR_TEXT).grid(row=3, column=0, padx=14, pady=(8, 2), sticky="w")
         legend = ctk.CTkFrame(detail, fg_color="transparent")
         legend.grid(row=4, column=0, padx=14, pady=(0, 6), sticky="ew")
-        for (label, color) in [("M≥4.0", "#F87171"), ("M≥3.0", "#FBBF24"),
+        for (label, color) in [("M≥5.0", "#C084FC"), ("M≥4.0", "#F87171"), ("M≥3.0", "#FBBF24"),
                                ("M≥2.0", "#FB9236"), ("M<2.0", "#34D399")]:
             row = ctk.CTkFrame(legend, fg_color="transparent")
             row.pack(fill="x", pady=1)
@@ -1242,7 +1245,8 @@ class DepremGUI(ctk.CTk):
             text_color=COLOR_SUCCESS if ok else COLOR_DANGER)
 
     def _on_map_quake(self, quake, info):
-        mag = quake.get("magnitude") or 0
+        mag = quake.get("magnitude")
+        mag_s = f"M{mag:.1f}" if mag else "M?.."
         loc = (quake.get("location") or "?")[:44]
         ts = quake.get("occurred_at", "?")
         depth = quake.get("depth_km")
@@ -1251,7 +1255,7 @@ class DepremGUI(ctk.CTk):
         fault = info.get("fault", "?")
         fdist = info.get("fault_dist_km")
         fdist_s = f"{fdist:.1f} km" if fdist is not None else "?"
-        self.map_detail_title.configure(text=f"M{mag:.1f} — {loc}")
+        self.map_detail_title.configure(text=f"{mag_s} — {loc}")
         self.map_detail_body.configure(
             text=(f"Zaman: {ts}\nDerinlik: {depth_s}\n"
                   f"Konum: {(quake.get('latitude') or 0):.4f}, {(quake.get('longitude') or 0):.4f}\n"
@@ -1446,12 +1450,32 @@ class DepremGUI(ctk.CTk):
              "R(t) = K / (t + c)^p\n\n"
              "K: üretkenlik, c: erken dönem ölçeği, p: azalım üssü\n\n"
              "Reasenberg-Jones (1989) üretkenlik modeli:\n"
-             "K = 10^[a + b·(Mm - Mkes)], a=-1.67, b=0.91\n"
-             "p=1.08, c=0.05 gün (jenerik California değerleri).\n\n"
-             "Marmara'ya kalibre değildir; mertebe tahminidir.\n\n"
-             "Kaynak: Reasenberg & Jones (1989) Science; USGS OAF",
-             "https://earthquake.usgs.gov/data/oaf/background.php"),
+             "K = 10^[a + b·(Mm - Mkes)]\n\n"
+             "Bu uygulama Türkiye kalibrasyonunu kullanır:\n"
+             "a=-1.90, b=1.11, p=1.20, c=0.05 gün\n"
+             "(Müderrisoğlu & Yazgan 2020; Mw≥5.9 Türkiye dizileri).\n\n"
+             "Kaynak: Reasenberg & Jones (1989) Science; USGS OAF;\n"
+             "Muderrisoglu & Yazgan (2020) Earthq. Eng. Eng. Vib. 19:149-160",
+             "https://doi.org/10.1007/s11803-020-0553-2"),
             
+            ("Kısa Vadeli Bileşik Gösterge (7 Gün)",
+             "5 bileşenin ağırlıklı ortalaması (0-1 skor):\n\n"
+             "• Poisson olasılığı (%30)\n"
+             "• b-değeri trendi (%20): max(0, -Δb·5)\n"
+             "• Enerji oranı (%15): (oran-0.5)/2\n"
+             "• Z-skor (%20): z/4\n"
+             "• Öncü sismisite oranı (%15): oran·3\n\n"
+             "Uyarı eşikleri: ≥0.65 kırmızı, ≥0.45 turuncu,\n"
+             "≥0.25 sarı (uzman seçimi eşikler).\n\n"
+             "ÖNEMLİ: Ağırlık ve eşikler geçmiş veriyle kalibre\n"
+             "EDİLMEMİŞTİR; bileşik sayı kalibre bir olasılık değil\n"
+             "eğilim göstergesidir. Operasyonel tahmin standartları\n"
+             "(ICEF) kalibre ve test edilebilir olasılık ister;\n"
+             "bu ekrandaki kalibre olasılık SADECE Poisson\n"
+             "bileşenidir (zemin hızdan).\n\n"
+             "Kaynak: Jordan vd. (2011) Ann. Geophys. 54:315-326 (ICEF)",
+             "https://doi.org/10.4401/ag-5350"),
+           
             ("Coulomb Stres Transferi", 
              "Coulomb Kırılma Kriteri: ΔCFF = Δτ + μ'·Δσn\n\n"
              "Δτ: kayma stressi değişimi\n"
@@ -1477,7 +1501,8 @@ class DepremGUI(ctk.CTk):
              "https://www.science.org/doi/10.1126/science.adz0072"),
             
             ("Kitli Fay & Sismik Boşluk Teorisi", 
-             "Marmara'da ~160 km'lik bölüm 1766'dan beri kırılmamıştır.\n\n"
+             "Marmara'da ~160 km'lik bölüm 1766'dan beri büyük ölçüde kırılmamıştır\n"
+             "(2025'te Kumburgaz batısında M6.2 kısmi kırılma oldu).\n\n"
              "Fedotov (1965) sismik boşluk teorisi: Uzun süre kırılmamış\n"
              "fay segmentleri büyük deprem üretme potansiyeli taşır.\n\n"
              "Parsons (2004): İstanbul için 30 yıllık M≥7 olasılığı:\n"
@@ -1486,9 +1511,9 @@ class DepremGUI(ctk.CTk):
              "Martínez-Garzón vd. (2025): Kırılma doğuya, İstanbul'a\n"
              "ilerliyor; 2025 M6.2 Kumburgaz batısında kısmi kırılma.\n\n"
              "Segment bazında risk:\n"
-             "• Tekirdağ: 1766'dan beri kırılmadı (260 yıl boşluk)\n"
+             f"• Tekirdağ: 1766'dan beri kırılmadı ({datetime.now().year - 1766} yıl boşluk)\n"
              "• Kumburgaz: 2025'te kısmi kırılma, ana segment kitli\n"
-             "• Avcılar: 1509'dan beri kırılmamış (517 yıl boşluk)\n"
+             f"• Avcılar: 1509'dan beri kırılmamış ({datetime.now().year - 1509} yıl boşluk)\n"
              "• Adalar: 1766'dan beri locked",
              "https://temblor.net/earthquake-insights/a-magnitude-6-2-quake-strikes-the-marmara-fault-at-site-of-large-historic-earthquakes-near-istanbul-16755/"),
             
@@ -1519,7 +1544,7 @@ class DepremGUI(ctk.CTk):
                                  anchor="w").pack(anchor="w", padx=18, pady=1)
                 elif line.strip().startswith(("1.", "2.", "3.")):
                     ctk.CTkLabel(card, text=line.strip(), font=ctk.CTkFont(size=10, weight="bold"),
-                                 text_color="#D7DEE9", justify="left",
+                                 text_color=COLOR_BODY, justify="left",
                                  anchor="w").pack(anchor="w", padx=18, pady=2)
                 elif line.strip() == "":
                     pass
@@ -1702,7 +1727,11 @@ class DepremGUI(ctk.CTk):
 
         fs = ctk.CTkToplevel(self)
         fs.title("Grafikler - Tam Ekran")
-        fs.geometry(f"{self.winfo_screenwidth()}x{self.winfo_screenheight()}+0+0")
+        try:
+            # Geçerli monitörü doldur (çok ekranlı kurulumda doğru ekran)
+            fs.attributes("-fullscreen", True)
+        except Exception:
+            fs.geometry(f"{self.winfo_screenwidth()}x{self.winfo_screenheight()}+0+0")
         fs.configure(fg_color=COLOR_MAIN_BG)
         fs.grid_columnconfigure(0, weight=1)
         fs.grid_rowconfigure(1, weight=1)
@@ -1736,6 +1765,10 @@ class DepremGUI(ctk.CTk):
         self._draw_fullscreen_chart(cf)
 
         self._chart_fs = fs
+        try:
+            fs.bind("<Escape>", lambda e: (fs.destroy(), setattr(self, '_chart_fs', None)))
+        except Exception:
+            pass
 
     def _on_fullscreen_filter(self, choice):
         """Tam ekrandaki zaman seçimi: ana grafiği de eşitler, yeniden çizer."""
@@ -1773,7 +1806,7 @@ class DepremGUI(ctk.CTk):
         p = ctk.CTkScrollableFrame(self.main, fg_color="transparent")
         p.grid_columnconfigure(0, weight=1)
         self.pages["haberler"] = p
-        self._header(p, "Deprem Haberleri", "Bilim insanlarından son açıklamalar ve deprem haberleri")
+        self._header(p, "Deprem Haberleri", "Güncel deprem haberleri (Google News)")
 
         # Kontrol çubuğu
         cbar = ctk.CTkFrame(p, fg_color="transparent")
@@ -2130,7 +2163,9 @@ class DepremGUI(ctk.CTk):
                 _o.startfile(_s.executable)
             else:
                 import subprocess as _sp
-                _sp.Popen([_s.executable] + _s.argv,
+                # argv[0] göreli olabilir (örn. "main.py"); mutlaklaştır
+                _script = _o.path.abspath(_s.argv[0])
+                _sp.Popen([_s.executable] + [_script] + _s.argv[1:],
                           cwd=_o.path.dirname(_o.path.abspath(__file__)))
         except Exception as e:
             try:
@@ -2594,7 +2629,7 @@ class DepremGUI(ctk.CTk):
                 else:
                     freq = "—"
 
-                ctk.CTkLabel(self.rec_inner, text=f"M≥{m:.0f}", font=ctk.CTkFont(size=12, weight="bold"),
+                ctk.CTkLabel(self.rec_inner, text=f"M≥{m:g}", font=ctk.CTkFont(size=12, weight="bold"),
                              text_color=COLOR_TEXT).grid(row=idx + 1, column=0, padx=12, pady=2, sticky="w")
                 ctk.CTkLabel(self.rec_inner, text=text, font=ctk.CTkFont(size=11),
                              text_color=COLOR_TEXT).grid(row=idx + 1, column=1, padx=12, pady=2, sticky="w")

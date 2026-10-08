@@ -438,7 +438,10 @@ def compute_bval_trend(earthquakes, window_days=90, step_days=30):
     from deprem_izleme.aggregation import calculate_b_value
 
     timestamps = sorted([e["timestamp"] for e in earthquakes if e.get("timestamp")])
-    mags = {e["timestamp"]: e["magnitude"] for e in earthquakes if e.get("timestamp") and e.get("magnitude")}
+    # Liste (dict değil): aynı saniyedeki iki deprem anahtar çakışmasıyla
+    # birbirini ezmemeli.
+    mags = [(e["timestamp"], e["magnitude"]) for e in earthquakes
+            if e.get("timestamp") and e.get("magnitude")]
 
     if not timestamps:
         return None
@@ -454,7 +457,7 @@ def compute_bval_trend(earthquakes, window_days=90, step_days=30):
     t = t_min
     while t + window_days * 86400 <= t_max:
         t_end = t + window_days * 86400
-        window_mags = [m for ts, m in mags.items() if t <= ts <= t_end]
+        window_mags = [m for ts, m in mags if t <= ts <= t_end]
 
         if len(window_mags) >= 10:
             b_val, a_val, mc = calculate_b_value(window_mags)
@@ -473,15 +476,22 @@ def compute_bval_trend(earthquakes, window_days=90, step_days=30):
         b_trend = b_last - b_first
         b_min = min(w["b_value"] for w in windows)
         b_min_idx = min(range(len(windows)), key=lambda i: windows[i]["b_value"])
+    elif len(windows) == 1:
+        # Tek pencere: trend yok ama değerler geçerli olmalı (çökme yok)
+        b_first = b_last = windows[0]["b_value"]
+        b_trend = 0
+        b_min = b_first
+        b_min_idx = 0
     else:
+        b_first = b_last = None
         b_trend = 0
         b_min = 0
         b_min_idx = 0
 
     return {
         "windows": windows,
-        "b_first": round(b_first, 4) if windows else None,
-        "b_last": round(b_last, 4) if windows else None,
+        "b_first": round(b_first, 4) if b_first is not None else None,
+        "b_last": round(b_last, 4) if b_last is not None else None,
         "b_trend": round(b_trend, 4),
         "b_min": round(b_min, 4),
         "b_min_index": b_min_idx,
