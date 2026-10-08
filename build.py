@@ -1,7 +1,7 @@
 """Portable build script: python build.py (proje kokunden calistirin).
 
 PyInstaller ile tek klasorluk (onedir) penceresiz exe uretir.
-Cikti: dist/deprem-izleme/deprem-izleme.exe + data/ klasoru.
+Cikti: dist/deprem-analiz-marmara/deprem-analiz-marmara.exe (+ ayri data/ klasoru).
 """
 import os
 import subprocess

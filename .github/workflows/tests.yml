@@ -1,0 +1,24 @@
+# Regresyon testleri (Windows): derleme + kalici test suiti.
+# GUI duman testleri Windows runner'da gercek Tk ile calisir.
+# Ag/Telegram cagrilari testlerde yamali/kapali tutulur; gercek
+# kullanici DB'sine dokunulmaz (db_guard + sentetik gecici dizin).
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  regression:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Bagimliliklar
+        run: pip install -r requirements.txt
+      - name: Derleme kontrolu
+        run: python -m py_compile main.py run_gui.py deprem_izleme/*.py scripts/check_secrets.py tests/*.py
+      - name: Regresyon suitii
+        run: python tests/run_tests.py

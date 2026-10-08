@@ -4,7 +4,7 @@ Marmara Denizi ve İstanbul çevresindeki depremleri izleyen, bilimsel
 yöntemlerle risk analizi yapan açık kaynaklı masaüstü uygulaması
 (Python + CustomTkinter). İnternetsiz çalışan gömülü harita ve çok kaynaklı
 veri katmanları içerir. Otomatik indirme/kurma yolu güvenlik denetimi
-tamamlanana dek kapalıdır (B3 bekleniyor); sürüm denetimi yalnızca
+tamamlanana dek kapalıdır; sürüm denetimi yalnızca
 bilgi verir, yeni sürüm elle indirilir.
 
 > **Yasal uyarı:** Bu uygulama bir erken uyarı sistemi değildir.
@@ -97,8 +97,8 @@ python build.py --release  # + GitHub Release paketi (win64 zip)
 
 - Uygulama açılışta (sessizce) ve Ayarlar'dan (manuel) yeni release
   denetler — bu yalnızca **bilgi** verir.
-- **Otomatik indirme/kurma/çalıştırma kapalıdır** (SEC-03/04; imzalı
-  güvenli güncelleme mekanizması B3 kurulana dek). "Güvenli otomatik
+- **Otomatik indirme/kurma/çalıştırma kapalıdır** (imzalı güvenli
+  güncelleme mekanizması kurulana dek). "Güvenli otomatik
   güncelleme" iddiası yoktur.
 - Yeni sürümü GitHub Releases sayfasından elle indirin.
   Kişisel dosyalarınızı `data/` altında tutun.
@@ -138,7 +138,10 @@ assets/                # ikon + sayısallaştırma betikleri
   (bilgilendirme amaçlıdır), [KOERI](http://www.koeri.boun.edu.tr/scripts/lst0.asp)
 - Kıyı çizgileri: [Natural Earth](https://www.naturalearthdata.com) (public domain)
 - Fay izleri: MTA diri fay haritalarının QGIS sayısallaştırması
-  ([ozangerger/earthquakes-in-istanbul](https://github.com/ozangerger/earthquakes-in-istanbul))
+  ([ozangerger/earthquakes-in-istanbul](https://github.com/ozangerger/earthquakes-in-istanbul)).
+  Kaynak depoda açık bir lisans dosyası bulunmuyor; bu nedenle fay
+  koordinatlarının yeniden dağıtım izni doğrulanmış değildir ve kamuya
+  açılmadan önce hak sahibinden izin alınması gerekir.
 - Yöntemler: Gutenberg & Richter (1944), Aki (1965), Utsu (1966),
   Gardner & Knopoff (1974), Reasenberg & Jones (1989),
   King, Stein & Lin (1994), Parsons (2004), Wiemer & Wyss (2000),
@@ -154,6 +157,10 @@ dosya sürüm kontrolüne girmez (`.gitignore`). Bildirim/arıza kayıtları
 da yereldir.
 
 ## Ortam değişkenleri (isteğe bağlı)
+
+Not: Uygulama `.env` dosyası okumaz; aşağıdaki değişkenler işletim
+sistemi ortamında tanımlanmalıdır (örn. `set DEPREM_TELEGRAM_TOKEN=...`).
+`.env.example` yalnızca başvurulacak değer listesidir.
 
 | Değişken | Açıklama |
 | --- | --- |
@@ -179,8 +186,7 @@ ML, Mw ve MD aynı ölçek değildir; birbirine dönüştürülmez. Her kayıt
 türünü (`mag_type`), kaynağını ve revizyonunu taşır; gösterim için
 Mw → ML → MD sırasıyla tek değer seçilir (`magnitude_canonical`).
 Kaynağın açıkça bildirmediği tepe `magnitude` değeri `unknown` sayılır.
-Bu alanlar şu an yalnızca bellek içindedir; veritabanına yazılmaz
-(K3'teki olay–kaynak gözlemi ayrımıyla taşınacak).
+Bu alanlar şu an yalnızca bellek içindedir; veritabanına yazılmaz.
 
 ## Lisans
 
