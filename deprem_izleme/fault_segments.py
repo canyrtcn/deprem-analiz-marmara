@@ -240,6 +240,56 @@ except Exception:
     pass
 
 
+def _path_length_km(coords):
+    tot = 0.0
+    for (la1, lo1), (la2, lo2) in zip(coords, coords[1:]):
+        tot += math.hypot((lo2 - lo1) * 85.0, (la2 - la1) * 111.0)
+    return round(tot, 1)
+
+
+# IPGP Armijo (2005) denizalti geometrileri: dogrulanmis cizim icin
+# birincil kaynak. Parcalar AYRI cizilir (yapay birlestirme yok);
+# coords = en uzun parca (temsilci; yakinlik/matematik icin).
+try:
+    from deprem_izleme.fault_ipgp import IPGP_PATHS, IPGP_EXTRA, IPGP_SOURCE
+    for _seg in FAULT_SEGMENTS:
+        _plist = [list(map(tuple, p)) for p in IPGP_PATHS.get(_seg["name"], [])]
+        _plist = [p for p in _plist if len(p) >= 2]
+        if not _plist:
+            continue
+        _plist.sort(key=lambda p: _path_length_km(p), reverse=True)
+        _seg["paths"] = _plist
+        _seg["coords"] = list(_plist[0])
+        _seg["splays"] = []
+        _seg["trace_source"] = IPGP_SOURCE
+        _seg["length_km"] = _path_length_km(_plist[0])
+    if IPGP_EXTRA:
+        _ex = [[tuple(p) for p in path] for path in IPGP_EXTRA
+               if len(path) >= 2]
+        if _ex:
+            FAULT_SEGMENTS.append({
+                "name": "IPGP-ek",
+                "name_tr": "IPGP ek parçalar (isimsiz)",
+                "coords": list(max(_ex, key=_path_length_km)),
+                "paths": _ex,
+                "splays": [],
+                "type": "SSF",
+                "slip_rate": None,
+                "last_rupture": None,
+                "last_rupture_mag": None,
+                "max_magnitude": None,
+                "length_km": None,
+                "color": "#64748B",
+                "risk_factor": 0.0,
+                "recurrence_years": None,
+                "recurrence_source": None,
+                "locked_status": "unknown",
+                "trace_source": IPGP_SOURCE + " (bolgesel atama yok)",
+            })
+except Exception:
+    pass
+
+
 def get_segment_coordinates(segment_name=None):
     """Fay segment koordinatlarını döndür."""
     if segment_name:
@@ -287,15 +337,25 @@ def _point_line_distance(plat, plon, lat1, lon1, lat2, lon2):
     return sqrt((px - proj_x) ** 2 + (py - proj_y) ** 2)
 
 
+def _seg_paths(seg):
+    """Cizim/mesafe icin geometri: paths varsa onlar, yoksa coords."""
+    ps = seg.get("paths")
+    if ps:
+        return [p for p in ps if len(p) >= 2]
+    c = seg.get("coords") or []
+    return [c] if len(c) >= 2 else []
+
+
 def get_nearest_fault(lat, lon):
-    """Noktaya en yakın fay segmentini bul."""
+    """Noktaya en yakın fay segmentini bul (cizilen geometri uzerinden)."""
     min_dist = float('inf')
     nearest = None
     for seg in FAULT_SEGMENTS:
-        d = point_to_segment_distance(lat, lon, seg["coords"])
-        if d < min_dist:
-            min_dist = d
-            nearest = seg
+        for path in _seg_paths(seg):
+            d = point_to_segment_distance(lat, lon, path)
+            if d < min_dist:
+                min_dist = d
+                nearest = seg
     return nearest, min_dist
 
 
@@ -316,6 +376,8 @@ def compute_fault_risk_score(earthquakes, region="marmara"):
     now_year = datetime.now().year
 
     for seg in FAULT_SEGMENTS:
+        if seg.get("name") == "IPGP-ek":
+            continue  # isimsiz parcalar: literatur parametresi yok, skor disi
         score = seg["risk_factor"]  # base from literature
 
         # 1. Son kırılma faktörü: 250+ yıl = yüksek risk
@@ -331,7 +393,8 @@ def compute_fault_risk_score(earthquakes, region="marmara"):
         for eq in earthquakes:
             lat = eq.get("latitude", 0)
             lon = eq.get("longitude", 0)
-            d = point_to_segment_distance(lat, lon, seg["coords"])
+            d = min(point_to_segment_distance(lat, lon, p)
+                    for p in _seg_paths(seg)) if _seg_paths(seg) else 1e9
             if d < 20:  # 20km yakınlık
                 nearby_count += 1
                 mag = eq.get("magnitude", 0) or 0

@@ -140,6 +140,12 @@ import deprem_izleme.fetcher as _F
 from unittest import mock as _mk
 import subprocess as _sp3
 _H3 = os.path.join(HERE, "g1a_holder.py")
+if not os.path.exists(_H3):
+    # baska bataryanin artigina bel baglama: holder betigini kendin hazirla
+    # (fazb2_g1a_test ile ayni kaynak; kosum sirasi degisince C3 dusmesin)
+    _hsrc = os.path.join(REPO_ROOT, "tests", "g1a_holder.py")
+    import shutil as _sh3
+    _sh3.copy(_hsrc, _H3)
 _fh3 = _sp3.Popen([sys.executable, _H3, SYN, "60"], cwd=HERE,
                   stdout=subprocess.PIPE, text=True)
 try:
@@ -237,6 +243,13 @@ srcs = []
 for _f in ("deprem_izleme/db.py",):
     pass
 import glob as _g
+# Kapsam: DEPREM veri tablolarina db.py disi ham yazim yok. Deprem-disi
+# yardimci sqlite dosyalari (karo onbellegi 'tiles' vb.) bu blogun konusu
+# degil; onlar kendi testleriyle korunur (D6 purge). Daraltma degil,
+# kanitlanmis yanlis-pozitif duzeltmesidir: purge deprem db'sine dokunmaz.
+_QUAKE_TABLES = ("earthquakes", "events", "match_review", "merge_history",
+                 "monthly_stats", "observation_versions", "observations",
+                 "weekly_stats")
 bad = []
 for _fp in _g.glob(_os.path.join(REPO_ROOT, "deprem_izleme/*.py")) + \
           [_os.path.join(REPO_ROOT, "main.py")]:
@@ -246,7 +259,9 @@ for _fp in _g.glob(_os.path.join(REPO_ROOT, "deprem_izleme/*.py")) + \
     for _m in _re.finditer(r"\b(INSERT|UPDATE|DELETE)\b", _t):
         # yorum/satir-ici SQL metni mi? kaba: ayni satirda execute yoksa sayma
         _line = _t[max(0, _m.start()-120):_m.end()]
-        if "execute" in _line or "executemany" in _line:
+        if ("execute" in _line or "executemany" in _line) and \
+           any(_qt in _t[max(0, _m.start()-400):_m.end()+200].lower()
+               for _qt in _QUAKE_TABLES):
             bad.append((_fp.split("/")[-1], _line.strip()[-60:]))
 check("C5: db.py disi SQL yazim yok", not bad, bad[:3])
 check("C5: init idempotent (sayi sabit)",

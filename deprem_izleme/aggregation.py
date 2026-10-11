@@ -953,6 +953,13 @@ def get_comprehensive_risk_report(region="marmara", max_age=45, db_path=None):
 
     quakes = get_earthquakes(since=datetime.now() - timedelta(days=30), region=region,
                              db_path=db_path)
+    _n_raw = len(quakes)
+    try:
+        from deprem_izleme.dedup import dedupe_records
+        quakes = dedupe_records(quakes)
+    except Exception:
+        pass
+    _n_unique = len(quakes)
     mags = [q["magnitude"] for q in quakes if q.get("magnitude")]
 
     b_val, a_val, mc = calculate_b_value(mags)
@@ -1015,6 +1022,9 @@ def get_comprehensive_risk_report(region="marmara", max_age=45, db_path=None):
         "region": region,
         "analysis_period_days": 30,
         "quake_count": len(quakes),
+        "quake_count_raw": _n_raw,
+        "quake_count_unique": _n_unique,
+        "duplicates_merged": _n_raw - _n_unique,
         "no_data": len(quakes) < 5,
         "gutenberg_richter": {
             "b_value": round(b_val, 4),

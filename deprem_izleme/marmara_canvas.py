@@ -12,7 +12,7 @@ import math
 import tkinter as tk
 
 from deprem_izleme.coastline import COAST_LINES
-from deprem_izleme.sealines import SEA_RING, ISLANDS
+from deprem_izleme.sealines import SEA_RING, SEA_EXTRA, ISLANDS
 from deprem_izleme.fault_segments import FAULT_SEGMENTS, get_nearest_fault
 
 K = math.cos(math.radians(40.8))  # boylam duzeltmesi
@@ -101,7 +101,12 @@ SRC_COLORS = {
 }
 
 
+from deprem_izleme.dedup import _event_key, pick_candidates
+
+
 def _mag_color(mag):
+    if mag is None:
+        return "#34D399"
     if mag >= 5.0:
         return "#C084FC"
     if mag >= 4.0:
@@ -122,7 +127,7 @@ class MarmaraMap(tk.Canvas):
         super().__init__(master, **kw)
         self.on_quake = on_quake
         self.on_fault = on_fault
-        self._sources = {}
+        self._events = []
         self._visible = {}
         self._faults_visible = True
         self._selected = None
@@ -184,7 +189,8 @@ class MarmaraMap(tk.Canvas):
         if abs(e.x - px) + abs(e.y - py) > 4:
             self._moved = True
         w, h, sx, sy = self._scales()
-        self._cx -= (e.x - px) / sx
+        # project() tersi: boylam ekseni K ile kisalir (unproject ile ayni)
+        self._cx -= (e.x - px) / (K * sx)
         self._cy += (e.y - py) / sy
         self._press_xy = (e.x, e.y)
         self.redraw()
@@ -194,18 +200,53 @@ class MarmaraMap(tk.Canvas):
             self._press_xy = None
             return
         self._press_xy = None
+        vis = [ev for ev in self._events if self._event_visible(ev)]
+        cands = pick_candidates(vis, self.project, e.x, e.y, tol=16.0)
+        if len(cands) == 1:
+            self._select_quake(_event_key(cands[0][1]))
+            return
+        if len(cands) > 1:
+            self._popup_event_list(e.x, e.y, cands)
+            return
         items = self.find_overlapping(e.x - 13, e.y - 13, e.x + 13, e.y + 13)
-        # Üstten alta: görünen (en üstteki) öğe seçilir
         for it in reversed(items):
-            tags = self.gettags(it)
-            for t in tags:
-                if t.startswith("q:"):
-                    _, src, eid = t.split(":", 2)
-                    self._select_quake(src, eid)
-                    return
+            for t in self.gettags(it):
                 if t.startswith("f:"):
                     self._select_fault(t[2:])
                     return
+
+    def _popup_event_list(self, x, y, cands):
+        """Ayni tik alanindaki birden fazla olay icin secim listesi."""
+        try:
+            pop = tk.Toplevel(self)
+            pop.wm_overrideredirect(True)
+            pop.geometry(f"+{self.winfo_rootx() + x + 10}+{self.winfo_rooty() + y + 10}")
+            lb = tk.Listbox(pop, font=("Segoe UI", 9), height=min(len(cands), 8),
+                            width=44)
+            lb.pack()
+            for d, ev in cands:
+                mag = ev.get("magnitude")
+                mag_s = f"M{mag:.1f}" if mag is not None else "M?"
+                srcs = "+".join(ev.get("member_sources") or ["?"])
+                loc = (ev.get("location") or "?")[:24]
+                lb.insert("end", f"{mag_s} • {loc} • {srcs}")
+            def _pick(_e=None):
+                try:
+                    idx = lb.curselection()[0]
+                    self._select_quake(_event_key(cands[idx][1]))
+                except Exception:
+                    pass
+                try:
+                    pop.destroy()
+                except Exception:
+                    pass
+            lb.bind("<Double-Button-1>", _pick)
+            lb.bind("<Return>", _pick)
+            lb.bind("<FocusOut>", lambda _e: pop.destroy())
+            lb.selection_set(0)
+            lb.focus_set()
+        except Exception:
+            self._select_quake(_event_key(cands[0][1]))
 
     def fit(self, lon0=26.4, lon1=30.6, lat0=40.0, lat1=41.6):
         self._cx = (lon0 + lon1) / 2
@@ -213,13 +254,34 @@ class MarmaraMap(tk.Canvas):
         self._span_x = (lon1 - lon0) * 1.05
         self.redraw()
 
-    # ---------- veri ----------
-    def set_data(self, sources):
-        """sources: {kaynak_adi: [quake, ...]}."""
-        self._sources = {k: (v or []) for k, v in (sources or {}).items()}
-        for k in self._sources:
-            self._visible.setdefault(k, True)
+    # ---------- veri (birlesik olaylar) ----------
+    def set_events(self, events):
+        """Olay listesi (dedup edilmis; her olay uyeleri korur)."""
+        self._events = list(events or [])
+        for ev in self._events:
+            for s in (ev.get("member_channels")
+                      or ev.get("member_sources") or []):
+                self._visible.setdefault(s, True)
         self.redraw()
+
+    def set_data(self, sources):
+        """Geriye uyumluluk: ham katmanlar olaylara cevrilir."""
+        try:
+            from deprem_izleme.dedup import dedupe_layers
+            self.set_events(dedupe_layers(sources))
+        except Exception:
+            self._events = []
+            self.redraw()
+
+    def _event_channels(self, ev):
+        ch = ev.get("member_channels") or ev.get("member_sources") or []
+        return ch if ch else []
+
+    def _event_visible(self, ev):
+        srcs = self._event_channels(ev)
+        if not srcs:
+            return True
+        return any(self._visible.get(s, True) for s in srcs)
 
     def set_layer_visible(self, src, visible):
         self._visible[src] = bool(visible)
@@ -230,20 +292,26 @@ class MarmaraMap(tk.Canvas):
         self.redraw()
 
     def layer_count(self, src):
-        return len(self._sources.get(src, []))
+        return sum(1 for ev in self._events
+                   if src in (ev.get("member_channels")
+                              or ev.get("member_sources") or []))
 
     def total_count(self):
-        return sum(len(v) for k, v in self._sources.items() if self._visible.get(k, True))
+        return sum(1 for ev in self._events if self._event_visible(ev))
+
+    def unique_count(self):
+        return len(self._events)
 
     # ---------- secim ----------
-    def _select_quake(self, src, eid):
-        self._selected = (src, eid)
+    def _select_quake(self, key):
+        self._selected = key
         self.redraw()
         if self.on_quake:
-            for q in self._sources.get(src, []):
-                if str(q.get("event_id", id(q))) == eid:
+            for ev in self._events:
+                if _event_key(ev) == key:
+                    q = dict(ev)
                     try:
-                        seg, d = get_nearest_fault(q.get("latitude"), q.get("longitude"))
+                        seg, d = get_nearest_fault(ev.get("latitude"), ev.get("longitude"))
                         info = {"fault": seg["name_tr"] if seg else "?",
                                 "fault_dist_km": round(d, 1)}
                     except Exception:
@@ -270,17 +338,15 @@ class MarmaraMap(tk.Canvas):
         x0 = self._cx - self._span_x / 2
         x1 = self._cx + self._span_x / 2
 
-        # deniz
-        # NOT: SEA_RING doğuda ~29.87'de biter (üretim kutusu sınırı);
-        # İzmit Körfezi'nin iç kısmında su dolgusu eksik kalır. Kıyı
-        # çizgileri tamdır; halka ancak kaynak veriyle (assets/make_sea*.py
-        # + kıyı geojson) yeniden üretilerek genişletilmelidir.
-        sea_xy = []
-        for lon, lat in SEA_RING:
-            px, py = self.project(lon, lat)
-            sea_xy += [px, py]
-        if sea_xy:
-            self.create_polygon(sea_xy, fill=SEA_COLOR, outline="", tags=("base",))
+        # deniz (ana halka + ayri su cepleri; ayni boya)
+        for _ring in [SEA_RING] + list(SEA_EXTRA or []):
+            sea_xy = []
+            for lon, lat in _ring:
+                px, py = self.project(lon, lat)
+                sea_xy += [px, py]
+            if sea_xy:
+                self.create_polygon(sea_xy, fill=SEA_COLOR, outline="",
+                                    tags=("base",))
         for isl in ISLANDS:
             ixy = []
             for lon, lat in isl:
@@ -376,40 +442,42 @@ class MarmaraMap(tk.Canvas):
                                          fill=TEXT_CITY, font=("Segoe UI", 7),
                                          tags=("lyr_fault",))
 
-        # depremler (kaynak katmanli)
-        for src, items in self._sources.items():
-            if not self._visible.get(src, True):
+        # depremler (birlesik olaylar; tek marker)
+        for q in sorted(self._events,
+                        key=lambda e: ((e.get("magnitude") if e.get("magnitude") is not None else 0))):
+            if not self._event_visible(q):
                 continue
-            scol = SRC_COLORS.get(src, "#E6EBF4")
-            for q in sorted(items, key=lambda e: ((e.get("magnitude")) or 0)):
-                la, lo = q.get("latitude"), q.get("longitude")
-                if la is None or lo is None:
-                    continue
-                if not (x0 <= lo <= x1):
-                    continue
-                px, py = self.project(lo, la)
-                if not (0 <= px <= w and 0 <= py <= h):
-                    continue
-                mag = q.get("magnitude") or 0
-                r = 3.2 + mag * 1.7
-                eid = str(q.get("event_id", id(q)))
-                tag = f"q:{src}:{eid}"
-                sel = self._selected == (src, eid)
-                self.create_oval(px - r, py - r, px + r, py + r,
-                                 fill=_mag_color(mag), outline=SEL_OUTLINE if sel else scol,
-                                 width=2 if sel else 1, tags=("lyr_q", tag))
-                # Gorunmez genis vuruş alani (tiklamayi kolaylastirir)
-                self.create_oval(px - r - 9, py - r - 9, px + r + 9, py + r + 9,
-                                 fill="", outline="", tags=("lyr_q", tag))
-                if sel:
-                    self.create_oval(px - r - 4, py - r - 4, px + r + 4, py + r + 4,
-                                     outline=SEL_OUTLINE, width=1, tags=("lyr_q",))
-                if mag >= 2.5 and (mag >= 3.0 or self._span_x < 3.0):
-                    lx, ly = px, py - r - 8
-                    self.create_text(lx + 1, ly + 1, text=f"M{mag:.1f}", fill=LBL_HALO,
-                                     font=("Segoe UI", 7, "bold"), tags=("lyr_q",))
-                    self.create_text(lx, ly, text=f"M{mag:.1f}", fill=LBL_FG,
-                                     font=("Segoe UI", 7, "bold"), tags=("lyr_q",))
+            la, lo = q.get("latitude"), q.get("longitude")
+            if la is None or lo is None:
+                continue
+            if not (x0 <= lo <= x1):
+                continue
+            px, py = self.project(lo, la)
+            if not (0 <= px <= w and 0 <= py <= h):
+                continue
+            mag = q.get("magnitude")
+            if mag is None:
+                mag = 0
+            r = 3.2 + mag * 1.7
+            key = _event_key(q)
+            tag = f"q:{key}"
+            sel = self._selected == key
+            scol = SRC_COLORS.get((q.get("member_channels") or q.get("member_sources") or ["?"])[0], "#E6EBF4")
+            self.create_oval(px - r, py - r, px + r, py + r,
+                             fill=_mag_color(mag), outline=SEL_OUTLINE if sel else scol,
+                             width=2 if sel else 1, tags=("lyr_q", tag))
+            # Gorunmez genis vuruş alani (tiklamayi kolaylastirir)
+            self.create_oval(px - r - 9, py - r - 9, px + r + 9, py + r + 9,
+                             fill="", outline="", tags=("lyr_q", tag))
+            if sel:
+                self.create_oval(px - r - 4, py - r - 4, px + r + 4, py + r + 4,
+                                 outline=SEL_OUTLINE, width=1, tags=("lyr_q",))
+            if mag >= 2.5 and (mag >= 3.0 or self._span_x < 3.0):
+                lx, ly = px, py - r - 8
+                self.create_text(lx + 1, ly + 1, text=f"M{mag:.1f}", fill=LBL_HALO,
+                                 font=("Segoe UI", 7, "bold"), tags=("lyr_q",))
+                self.create_text(lx, ly, text=f"M{mag:.1f}", fill=LBL_FG,
+                                 font=("Segoe UI", 7, "bold"), tags=("lyr_q",))
 
         self._draw_scalebar(w, h)
         self._draw_north(w)

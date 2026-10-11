@@ -251,20 +251,40 @@ def _region_clause(region):
     return "region_tag = ?", [region]
 
 
-def _parse_occurred_ts(occurred):
-    """occurred_at -> unix epoch. Bilinmeyen formatta 0 (çökme yok)."""
+def _parse_occurred_ts(occurred, agency=None, event_id=None):
+    """occurred_at -> unix epoch. Bilinmeyen formatta 0 (cokme yok).
+
+    Kaynak-saat kurali (2026-10 dogrulamasi):
+    - Dogrudan KOERI (event_id `koeri_` ile baslar veya agency koeri):
+      Turkiye duvar saati (UTC+3), oldugu gibi parse edilir.
+    - Sismik API satirlari (kandilli/afad/emsc/noa...): API UTC yazar;
+      TR duvar saatiyle karsilastirilabilirlik icin +10800sn eklenir.
+    Karisik-donem notu: bu kuraldan ONCE yazilmis API satirlari 3saat
+    geridedir; yeni karsilastirmalar kaynak-bazinda tutarlidir.
+    """
     if not occurred:
         return 0
+    eid = str(event_id or "")
+    ag = str(agency or "").lower()
+    is_koeri = eid.startswith("koeri_") or ag == "koeri"
+    base = 0
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M",
                 "%Y.%m.%d %H:%M:%S", "%d.%m.%Y %H:%M:%S"):
         try:
-            return int(datetime.strptime(occurred[:19], fmt).timestamp())
+            base = int(datetime.strptime(occurred[:19], fmt).timestamp())
+            break
         except (ValueError, TypeError):
             continue
-    try:
-        return int(datetime.fromisoformat(occurred).timestamp())
-    except (ValueError, TypeError):
+    else:
+        try:
+            base = int(datetime.fromisoformat(occurred).timestamp())
+        except (ValueError, TypeError):
+            return 0
+    if not base:
         return 0
+    if not is_koeri:
+        base += 10800  # API UTC -> TR duvar saati
+    return base
 
 
 def get_db(path=None):
@@ -327,7 +347,8 @@ def insert_earthquake(eq, region_tag="marmara", db_path=None):
     try:
         with _write_guard_for_path(path):
             occurred = eq.get("occurred_at", "")
-            ts = _parse_occurred_ts(occurred)
+            ts = _parse_occurred_ts(occurred, eq.get("source"),
+                                    eq.get("event_id"))
             sources = eq.get("sources") or []
             ml = mw = md = None
             for s in sources:
@@ -405,7 +426,7 @@ def _obs_measurements(eq, region_tag="marmara"):
 def _insert_earthquake_v2(conn, eq, region_tag):
     """v2 yazma: gozlem + surum (ezme yok, revizyon korunur)."""
     occurred = eq.get("occurred_at", "")
-    ts = _parse_occurred_ts(occurred)
+    ts = _parse_occurred_ts(occurred, eq.get("source"), eq.get("event_id"))
     m = _obs_measurements(eq, region_tag)
     ml, mw, md = m["ml"], m["mw"], m["md"]
     mag_raw, mag_type = m["mag_raw"], m["mag_type"]
@@ -443,7 +464,8 @@ def bulk_insert_earthquakes(earthquakes, region_tag="marmara", db_path=None):
             rows = []
             for eq in earthquakes:
                 occurred = eq.get("occurred_at", "")
-                ts = _parse_occurred_ts(occurred)
+                ts = _parse_occurred_ts(occurred, eq.get("source"),
+                                        eq.get("event_id"))
                 tag = eq.get("region_tag") or region_tag
                 sources = eq.get("sources") or []
                 ml = mw = md = None
@@ -461,7 +483,7 @@ def bulk_insert_earthquakes(earthquakes, region_tag="marmara", db_path=None):
                 ))
 
             conn.executemany("""
-            INSERT OR IGNORE INTO earthquakes
+            INSERT OR REPLACE INTO earthquakes
                 (id, event_id, occurred_at, timestamp, latitude, longitude,
                  depth_km, magnitude, magnitude_ml, magnitude_mw, magnitude_md,
                  location, source, region_tag)

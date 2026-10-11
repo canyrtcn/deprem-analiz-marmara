@@ -7,7 +7,7 @@
 ![Lisans](https://img.shields.io/badge/License-MIT-43A047?style=flat-square)
 ![Arayüz](https://img.shields.io/badge/UI-CustomTkinter-495057?style=flat-square)
 ![Veritabanı](https://img.shields.io/badge/Database-SQLite-003B57?style=flat-square)
-[![Son sürüm](https://img.shields.io/badge/Release-v1.0.2-6F42C1?style=flat-square)](https://github.com/canyrtcn/deprem-analiz-marmara/releases/tag/v1.0.2)
+[![Son sürüm](https://img.shields.io/badge/Release-v1.0.3-6F42C1?style=flat-square)](https://github.com/canyrtcn/deprem-analiz-marmara/releases/tag/v1.0.3)
 
 **Deprem Analiz — Marmara**, Python, CustomTkinter ve SQLite ile geliştirilmiş açık kaynaklı bir Windows masaüstü uygulamasıdır. Deprem kayıtlarını yerel olarak saklar, geçmiş etkinliği analiz eder ve isteğe bağlı Telegram bildirimleri sunar.
 
@@ -38,7 +38,7 @@
 
 ### Windows için hazır paket
 
-**[Son sürüm: v1.0.2 — GitHub Releases](https://github.com/canyrtcn/deprem-analiz-marmara/releases/tag/v1.0.2)**
+**[Son sürüm: v1.0.3 — GitHub Releases](https://github.com/canyrtcn/deprem-analiz-marmara/releases/tag/v1.0.3)**
 
 1. `deprem-analiz-marmara-win64.zip` paketini indirin.
 2. ZIP arşivini bilgisayarınızda yazma izniniz olan bir klasöre çıkarın.
@@ -164,7 +164,7 @@ Uygulamanın istatistiksel yaklaşımlarına ve Marmara'nın sismotektonik yapı
 | --- | --- |
 | **Le Pichon ve diğerleri (2001)** — [*The active Main Marmara Fault*](https://doi.org/10.1016/S0012-821X(01)00449-6) | Ana Marmara Fayı'nın geometrisi ve aktif tektonik yapısı. |
 | **Ambraseys (2002)** — [*The Seismic Activity of the Marmara Sea Region over the Last 2000 Years*](https://doi.org/10.1785/0120000843) | Marmara'nın uzun dönem tarihsel deprem etkinliği. |
-| **Armijo ve diğerleri (2005)** — [*Submarine fault scarps in the Sea of Marmara pull-apart*](https://doi.org/10.1029/2004GC000896) | Marmara Denizi tabanındaki fay izleri ve segment morfolojisi. |
+| **Armijo ve diğerleri (2005)** — [*Submarine fault scarps in the Sea of Marmara pull-apart*](https://doi.org/10.1029/2004GC000896) | Marmara Denizi tabanındaki fay izleri ve segment morfolojisi. Haritada çizilen denizaltı fay geometrileri bu çalışmanın IPGP veri sayfasındaki (`faults_latlon.shp`, [indirme](https://www.ipgp.fr/~delorme/marmara.php)) ham parçalardır; parçalar birbirine yapay biçimde bağlanmaz, bölgesel ataması yapılamayanlar isimsiz grup olarak korunur. |
 | **Parsons (2004)** — [*Recalculated probability of M ≥ 7 earthquakes beneath the Sea of Marmara, Turkey*](https://doi.org/10.1029/2003JB002667) | Marmara için olasılıksal sismik tehlike araştırmaları. |
 | **Rockwell ve diğerleri (2009)** — [*Palaeoseismology of the North Anatolian fault near the Marmara Sea*](https://doi.org/10.1144/SP316.3) | Kuzey Anadolu Fayı'nda paleosismoloji, kırılma geçmişi ve segmentasyon. |
 | **Martínez-Garzón ve diğerleri (2026; çevrimiçi 2025)** — [*Progressive eastward rupture of the Main Marmara fault toward Istanbul*](https://doi.org/10.1126/science.adz0072) | 2025 Marmara deprem dizisi ve doğuya ilerleyen fay kırılmalarının analizi. |
@@ -180,6 +180,7 @@ Uygulamanın istatistiksel yaklaşımlarına ve Marmara'nın sismotektonik yapı
 | [Kandilli Rasathanesi / KOERI](https://www.koeri.boun.edu.tr/) | Kandilli deprem kataloğu ve bölgesel kayıtların incelenmesi. |
 | [AFAD](https://deprem.afad.gov.tr/) | Resmî deprem verileri ve güncel duyurular için referans. |
 | [Natural Earth](https://www.naturalearthdata.com/) | Marmara kıyı çizgisi ve temel coğrafi altlık. |
+| [Esri basemaps](https://server.arcgisonline.com/) | Harita sayfası altlığı: aydınlık temada Light Gray Canvas, karanlık temada Dark Gray Canvas (anahtarsız, z7–z13 doğrulandı, çevrimiçi döşeme + yerel önbellek; atıf görünür). |
 | [MTA — Türkiye Diri Fay Haritası](https://tdfh.mta.gov.tr/) | Türkiye'nin diri fay sistemine ilişkin kurumsal harita referansı. |
 | [ozangerger/earthquakes-in-istanbul](https://github.com/ozangerger/earthquakes-in-istanbul) | MTA temelli fay izlerinin sayısallaştırılması için yararlanılan kaynak proje. |
 

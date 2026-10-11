@@ -31,7 +31,7 @@ from deprem_izleme.notifier import (
 from deprem_izleme.analysis import (get_recurrence_report, build_analysis_prompt,
                                       catalog_span_days, interpret_now, baseline_status)
 from deprem_izleme.tooltips import add_tooltip, TOOLTIPS
-from deprem_izleme.marmara_canvas import MarmaraMap
+from deprem_izleme.osm_map import OsmMap
 from deprem_izleme.config import DAILY_LIMIT
 # NOT: charts (matplotlib) bilerek üstte import EDİLMİYOR - açılışı ~1.3 sn
 # yavaşlatıyordu. İlk grafik istendiğinde fonksiyon içinde yüklenir.
@@ -1124,6 +1124,16 @@ class DepremGUI(ctk.CTk):
             sw.grid(row=0, column=2 + i, padx=6, pady=10, sticky="w")
             sw.select(True)
             self.map_switches[key] = sw
+        try:
+            from deprem_izleme.tooltips import add_tooltip as _att
+            _att(self.map_switches.get("uygulama"),
+                 "Yerel veritabanındaki kayıtlar (veri kanalı; kurum değil)")
+            _att(self.map_switches.get("sismik"),
+                 "Sismik Harita canlı API beslemesi (veri kanalı; toplayıcı, kurum değil)")
+            _att(self.map_switches.get("koeri"),
+                 "Doğrudan KOERI listesi (veri kanalı; Kandilli ile aynı kurum)")
+        except Exception:
+            pass
         self.map_layers = {"uygulama": True, "sismik": True, "koeri": True, "fay": True}
 
         ctk.CTkButton(tb, text="Canlı Veri Çek", font=ctk.CTkFont(size=11),
@@ -1147,9 +1157,12 @@ class DepremGUI(ctk.CTk):
         map_card.grid_columnconfigure(0, weight=1)
         map_card.grid_rowconfigure(0, weight=1)
 
-        self.embedded_map = MarmaraMap(map_card, on_quake=self._on_map_quake,
-                                       on_fault=self._on_map_fault,
-                                       width=800, height=460)
+        from deprem_izleme.osm_map import OsmMap
+        from deprem_izleme.config import DATA_DIR as _MAP_DATA_DIR
+        self.embedded_map = OsmMap(map_card, on_quake=self._on_map_quake,
+                                   on_fault=self._on_map_fault,
+                                   data_dir=_MAP_DATA_DIR,
+                                   status_cb=self._on_map_conn_status)
         self.embedded_map.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
 
         detail = ctk.CTkFrame(body, fg_color=COLOR_CARD_BG, corner_radius=12,
@@ -1164,10 +1177,14 @@ class DepremGUI(ctk.CTk):
                                              font=ctk.CTkFont(size=15, weight="bold"),
                                              text_color=COLOR_TEXT, wraplength=260)
         self.map_detail_title.grid(row=1, column=0, padx=14, pady=(0, 2), sticky="w")
-        self.map_detail_body = ctk.CTkLabel(detail, text="Haritada bir deprem noktasına\nveya fay hattına tıklayın.",
-                                            font=ctk.CTkFont(size=11), text_color=COLOR_TEXT2,
-                                            justify="left", wraplength=260)
-        self.map_detail_body.grid(row=2, column=0, padx=14, pady=(0, 8), sticky="w")
+        self.map_detail_box = ctk.CTkFrame(detail, fg_color="transparent")
+        self.map_detail_box.grid(row=2, column=0, padx=14, pady=(0, 8), sticky="ew")
+        self.map_detail_body = ctk.CTkLabel(
+            self.map_detail_box,
+            text="Haritada bir deprem noktasına\nveya fay hattına tıklayın.",
+            font=ctk.CTkFont(size=11), text_color=COLOR_TEXT2,
+            justify="left", wraplength=260)
+        self.map_detail_body.pack(fill="x")
 
         ctk.CTkLabel(detail, text="Lejant", font=ctk.CTkFont(size=12, weight="bold"),
                      text_color=COLOR_TEXT).grid(row=3, column=0, padx=14, pady=(8, 2), sticky="w")
@@ -1197,6 +1214,10 @@ class DepremGUI(ctk.CTk):
         self.map_status.grid(row=3, column=0, sticky="w", padx=28, pady=(6, 8))
 
         self.map_cache = {"uygulama": [], "sismik": [], "koeri": []}
+        self.map_events = []
+        self.map_unique_label = ctk.CTkLabel(p, text="", font=ctk.CTkFont(size=10),
+                                            text_color=COLOR_TEXT2)
+        self.map_unique_label.grid(row=3, column=0, sticky="e", padx=28, pady=(6, 8))
         self._map_live_loaded = False
 
     # ---------- harita veri ----------
@@ -1209,29 +1230,47 @@ class DepremGUI(ctk.CTk):
         cutoff = self._map_cutoff_ts()
         out = []
         for q in quakes or []:
-            ts = q.get("timestamp") or _parse_occurred_ts(q.get("occurred_at", ""))
+            ts = q.get("timestamp") or _parse_occurred_ts(
+                q.get("occurred_at", ""), q.get("source"), q.get("event_id"))
             if ts and ts >= cutoff:
                 out.append(q)
         return out
 
-    def _sync_map_db_layer(self):
+    def _sync_map_db_layer(self, force=False):
         """Uygulama katmanını kayıtlı veriden güncelle (hızlı, eşzamanlı).
 
         Veri değişmediyse pahalı canvas yeniden çizimi atlanır (büyük
-        kataloglarda her yenilemede donmayı önler).
+        kataloglarda her yenilemede donmayı önler). İmza DB + canlı
+        katman parmak izlerini kapsar (canlı değişimde atlama yok).
+        Kayıtlar olay-bazında birleştirilir (tek marker).
         """
         from datetime import datetime as _dt, timedelta as _td
         if not hasattr(self, "embedded_map"):
             return
         dbq = get_earthquakes(since=_dt.now() - _td(days=self.map_days),
                               region="marmara", limit=2000)
-        sig = (len(dbq), dbq[0]["timestamp"] if dbq else 0, self.map_days)
-        if sig == getattr(self, "_map_sync_sig", None):
+        try:
+            from deprem_izleme.dedup import dedupe_layers
+            layers = {k: (self._filter_time(v) if k != "uygulama" else v)
+                      for k, v in self.map_cache.items()}
+            layers["uygulama"] = dbq
+            events = dedupe_layers(layers)
+        except Exception:
+            events = []
+        def _fp(items):
+            try:
+                return (len(items), items[0].get("timestamp", 0) if items else 0,
+                        items[-1].get("timestamp", 0) if items else 0)
+            except Exception:
+                return (0, 0, 0)
+        sig = (_fp(dbq), _fp(self.map_cache.get("sismik")),
+               _fp(self.map_cache.get("koeri")), self.map_days, len(events))
+        if not force and sig == getattr(self, "_map_sync_sig", None):
             return
         self._map_sync_sig = sig
         self.map_cache["uygulama"] = dbq
-        self.embedded_map.set_data({k: (self._filter_time(v) if k != "uygulama" else v)
-                                    for k, v in self.map_cache.items()})
+        self.map_events = events
+        self.embedded_map.set_events(events)
         for src in ("uygulama", "sismik", "koeri"):
             self.embedded_map.set_layer_visible(src, self.map_layers.get(src, True))
         self.embedded_map.set_faults_visible(self.map_layers.get("fay", True))
@@ -1239,6 +1278,7 @@ class DepremGUI(ctk.CTk):
 
     def _update_map_counts(self):
         counts = {k: len(self._filter_time(v)) for k, v in self.map_cache.items()}
+        uniq = len(getattr(self, "map_events", []) or [])
         for key, label in [("uygulama", "Uygulama"), ("sismik", "Sismik"),
                            ("koeri", "KOERI"), ("fay", "Faylar")]:
             sw = self.map_switches.get(key)
@@ -1250,6 +1290,10 @@ class DepremGUI(ctk.CTk):
                 sw.configure(text=f"{label} ({len(_FS)})")
             else:
                 sw.configure(text=f"{label} ({n})")
+        try:
+            self.map_unique_label.configure(text=f"{uniq} benzersiz olay")
+        except Exception:
+            pass
 
     def _on_map_time(self, choice):
         self.map_days = {"24 Saat": 1, "7 Gün": 7, "14 Gün": 14, "30 Gün": 30}.get(choice, 7)
@@ -1271,27 +1315,39 @@ class DepremGUI(ctk.CTk):
 
     def _map_live_worker(self):
         ok, errs = [], []
+        gen = self._map_live_gen = getattr(self, "_map_live_gen", 0) + 1
         try:
             from deprem_izleme.fetcher import fetch_earthquakes
             sq = fetch_earthquakes(days_back=self.map_days, min_magnitude=0.0)
+            if gen != self._map_live_gen:
+                return  # eski sonuc: yeninin uzerine yazma
             self.map_cache["sismik"] = sq
             ok.append(f"Sismik: {len(sq)}")
         except Exception as e:
+            if gen != self._map_live_gen:
+                return
             errs.append(f"Sismik: {e}")
         try:
             from deprem_izleme.fetcher_koeri import fetch_koeri
             kres = fetch_koeri()
-            self.map_cache["koeri"] = kres["quakes"]
+            if gen != self._map_live_gen:
+                return  # eski sonuc: yeninin uzerine yazma
             if kres["ok"]:
+                self.map_cache["koeri"] = kres["quakes"]
                 ok.append(f"KOERI: {len(kres['quakes'])}")
             else:
+                # Basarisiz kaynak onceki basarili veriyi silmez
                 errs.append(f"KOERI erişilemedi: {kres['error']}")
         except Exception as e:
+            if gen != self._map_live_gen:
+                return
             errs.append(f"KOERI: {e}")
-        self._post_ui( lambda: self._apply_map_live(ok, errs))
+        self._post_ui(lambda g=gen: self._apply_map_live(ok, errs, g))
 
-    def _apply_map_live(self, ok, errs):
-        self._sync_map_db_layer()
+    def _apply_map_live(self, ok, errs, gen=None):
+        if gen is not None and gen != getattr(self, "_map_live_gen", gen):
+            return  # eski istek: guncel gorunumu ezme
+        self._sync_map_db_layer(force=True)
         self._map_live_loaded = True
         msg = " · ".join(ok) if ok else ""
         if errs:
@@ -1300,6 +1356,47 @@ class DepremGUI(ctk.CTk):
             text=msg or "Canlı kaynaklara erişilemedi",
             text_color=COLOR_SUCCESS if ok else COLOR_DANGER)
 
+    def _on_map_conn_status(self, text):
+        try:
+            cur = self.map_status.cget("text") or ""
+        except Exception:
+            cur = ""
+        base = cur.split(" | ")[0] if " | " in cur else cur
+        extra = f" | {text}" if text else ""
+        try:
+            self.map_status.configure(text=f"{base}{extra}")
+        except Exception:
+            pass
+
+    def _detail_render(self, title, sections):
+        """Detay panelini kompakt bolumlerle doldur.
+
+        sections: [(baslik|None, [(etiket, deger), ...]), ...].
+        """
+        self.map_detail_title.configure(text=title)
+        try:
+            for w in self.map_detail_box.winfo_children():
+                w.destroy()
+        except Exception:
+            pass
+        try:
+            for sec_title, rows in sections:
+                if sec_title:
+                    ctk.CTkLabel(self.map_detail_box, text=sec_title,
+                                 font=ctk.CTkFont(size=11, weight="bold"),
+                                 text_color=COLOR_ACCENT).pack(fill="x", pady=(6, 0))
+                for k, v in rows:
+                    r = ctk.CTkFrame(self.map_detail_box, fg_color="transparent")
+                    r.pack(fill="x")
+                    ctk.CTkLabel(r, text=k, font=ctk.CTkFont(size=11),
+                                 text_color=COLOR_TEXT2, width=86,
+                                 anchor="w").pack(side="left")
+                    ctk.CTkLabel(r, text=str(v), font=ctk.CTkFont(size=11),
+                                 text_color=COLOR_TEXT, anchor="w",
+                                 wraplength=170, justify="left").pack(side="left", fill="x")
+        except Exception:
+            pass
+
     def _on_map_quake(self, quake, info):
         mag = quake.get("magnitude")
         mag_s = f"M{mag:.1f}" if mag else "M?.."
@@ -1307,26 +1404,51 @@ class DepremGUI(ctk.CTk):
         ts = quake.get("occurred_at", "?")
         depth = quake.get("depth_km")
         depth_s = f"{depth:.1f} km" if depth is not None else "?"
-        src = (quake.get("source") or "?").upper()
+        members = quake.get("members") or [quake]
         fault = info.get("fault", "?")
         fdist = info.get("fault_dist_km")
         fdist_s = f"{fdist:.1f} km" if fdist is not None else "?"
-        self.map_detail_title.configure(text=f"{mag_s} — {loc}")
-        self.map_detail_body.configure(
-            text=(f"Zaman: {ts}\nDerinlik: {depth_s}\n"
-                  f"Konum: {(quake.get('latitude') or 0):.4f}, {(quake.get('longitude') or 0):.4f}\n"
-                  f"Kaynak: {src}\nEn yakın fay: {fault} ({fdist_s})"))
+        try:
+            from deprem_izleme.dedup import institution_of
+        except Exception:
+            institution_of = lambda m: str(m.get("source") or "?")
+        seen_lines, mrows = set(), []
+        for m in members:
+            mm = m.get("magnitude")
+            mm_s = f"M{mm:.1f}" if mm is not None else "M?"
+            mt = m.get("mag_type") or ""
+            key = (institution_of(m).upper(), mm_s, mt,
+                   (m.get("occurred_at") or "?")[:16])
+            if key in seen_lines:
+                continue
+            seen_lines.add(key)
+            mrows.append((key[0], f"{mm_s}{(' (' + mt + ')') if mt and mt != 'unknown' else ''}"))
+        self._detail_render(
+            f"{mag_s} — {loc}",
+            [(None, [("Zaman", ts[:16]),
+                     ("Büyüklük", mag_s),
+                     ("Derinlik", depth_s),
+                     ("Enlem", f"{(quake.get('latitude') or 0):.4f}"),
+                     ("Boylam", f"{(quake.get('longitude') or 0):.4f}")]),
+             ("Ölçümler", mrows or [("—", "ölçüm yok")]),
+             ("Fay", [("En yakın", f"{fault} ({fdist_s})")])])
 
     def _on_map_fault(self, seg):
-        locked = seg.get("locked_status", "?").replace("_", " ").title()
-        self.map_detail_title.configure(text=seg.get("name_tr", "?"))
-        self.map_detail_body.configure(
-            text=(f"Durum: {locked}\nMaks: M{seg.get('max_magnitude', '?')}\n"
-                  f"Uzunluk: {seg.get('length_km', '?')} km\n"
-                  f"Kayma hızı: {seg.get('slip_rate', '?')} mm/yıl\n"
-                  f"Tekrarlama: ~{seg.get('recurrence_years', '?')} yıl\n"
-                  f"Son kırılma: {seg.get('last_rupture', '?')}\n"
-                  f"İz kaynağı: {seg.get('trace_source', '?')}"))
+        locked = (seg.get("locked_status") or "?").replace("_", " ").title()
+        mx = seg.get("max_magnitude")
+        ln = seg.get("length_km")
+        sl = seg.get("slip_rate")
+        rc = seg.get("recurrence_years")
+        lr = seg.get("last_rupture")
+        self._detail_render(
+            seg.get("name_tr", "?"),
+            [(None, [("Durum", locked),
+                     ("Maks", f"M{mx}" if mx is not None else "?"),
+                     ("Uzunluk", f"{ln} km" if ln is not None else "?"),
+                     ("Kayma hızı", f"{sl} mm/yıl" if sl is not None else "?"),
+                     ("Tekrarlama", f"~{rc} yıl" if rc is not None else "?"),
+                     ("Son kırılma", f"{lr}" if lr is not None else "?"),
+                     ("İz kaynağı", f"{seg.get('trace_source', '?')}")])])
 
     def _open_url(self, url):
         import webbrowser

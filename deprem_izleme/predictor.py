@@ -61,6 +61,13 @@ class EarthquakePredictor:
             since=now - timedelta(days=7),
             region=self.region
         )
+        try:
+            from deprem_izleme.dedup import dedupe_records as _dd
+            quakes_30d = _dd(quakes_30d)
+            quakes_90d = _dd(quakes_90d)
+            quakes_7d = _dd(quakes_7d)
+        except Exception:
+            pass
 
         mags_30d = [q["magnitude"] for q in quakes_30d if q.get("magnitude")]
         mags_90d = [q["magnitude"] for q in quakes_90d if q.get("magnitude")]

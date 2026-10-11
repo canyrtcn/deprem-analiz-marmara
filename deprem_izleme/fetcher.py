@@ -218,6 +218,29 @@ def fetch_earthquakes(days_back=7, min_magnitude=0.0, sources=None):
     return filtered
 
 
+def _sig_changed(q, old):
+    """Ayni kimlikte olcu revizyonu var mi? (magnitude/zaman/derinlik/konum)"""
+    if not old:
+        return False
+    try:
+        omag, oocc, odepth, olat, olon = old
+        if (q.get("magnitude") is not None and omag is not None
+                and abs(float(q["magnitude"]) - float(omag)) > 1e-9):
+            return True
+        if q.get("occurred_at") and q.get("occurred_at") != oocc:
+            return True
+        if (q.get("depth_km") is not None and odepth is not None
+                and abs(float(q["depth_km"]) - float(odepth)) > 1e-9):
+            return True
+        for k, o in (("latitude", olat), ("longitude", olon)):
+            if (q.get(k) is not None and o is not None
+                    and abs(float(q[k]) - float(o)) > 1e-9):
+                return True
+    except (TypeError, ValueError):
+        return False
+    return False
+
+
 def fetch_and_store(days_back=7, min_magnitude=0.0, sources=None, db_path=None):
     """Depremleri çek ve veritabanına kaydet.
 
@@ -247,8 +270,12 @@ def fetch_and_store(days_back=7, min_magnitude=0.0, sources=None, db_path=None):
             existing = {r[0] for r in
                         conn.execute("SELECT source || '|' || source_event_id FROM observations").fetchall() if r[0]}
         else:
-            existing = {r[0] for r in
-                        conn.execute("SELECT event_id FROM earthquakes").fetchall() if r[0]}
+            _rows = conn.execute(
+                "SELECT event_id, magnitude, occurred_at, depth_km,"
+                " latitude, longitude FROM earthquakes").fetchall()
+            existing = {r[0] for r in _rows if r[0]}
+            existing_sig = {r[0]: (r[1], r[2], r[3], r[4], r[5]) for r in _rows
+                            if r[0]}
     finally:
         conn.close()
 
@@ -269,6 +296,7 @@ def fetch_and_store(days_back=7, min_magnitude=0.0, sources=None, db_path=None):
 
     seen = set()
     new_quakes = []
+    _rev_updates = []
     cur_hashes = {}
     if _v2mode:
         try:
@@ -296,6 +324,12 @@ def fetch_and_store(days_back=7, min_magnitude=0.0, sources=None, db_path=None):
             if _v2mode and _v2hash(q) != cur_hashes.get(key):
                 seen.add(key)
                 new_quakes.append(q)
+            # v1: ayni kimlikte olcu degismisse satiri guncelle
+            # (INSERT OR REPLACE uzerinden; kayit kaybolmaz, son olcum korunur)
+            elif not _v2mode and _sig_changed(q, existing_sig.get(key)):
+                seen.add(key)
+                new_quakes.append(q)
+                _rev_updates.append(key)
             continue
         seen.add(key)
         new_quakes.append(q)
@@ -305,6 +339,8 @@ def fetch_and_store(days_back=7, min_magnitude=0.0, sources=None, db_path=None):
         return 0
 
     count = bulk_insert_earthquakes(new_quakes, db_path=_mpath)
+    if _rev_updates:
+        logger.info(f"{len(_rev_updates)} kayit revizyonla guncellendi.")
     logger.info(f"{count} yeni deprem kaydedildi.")
     return count
 
