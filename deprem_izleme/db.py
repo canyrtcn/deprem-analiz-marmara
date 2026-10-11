@@ -252,39 +252,76 @@ def _region_clause(region):
 
 
 def _parse_occurred_ts(occurred, agency=None, event_id=None):
-    """occurred_at -> unix epoch. Bilinmeyen formatta 0 (cokme yok).
+    """occurred_at -> unix epoch (mutlak UTC ani). Bilinmeyen formatta 0.
 
-    Kaynak-saat kurali (2026-10 dogrulamasi):
+    Kaynak-saat politikasi (B3, tz-aware; sistem saat diliminden bagimsiz):
+    - Acik UTC offset varsa (`Z`, `+00:00`...) ona oncelik verilir.
     - Dogrudan KOERI (event_id `koeri_` ile baslar veya agency koeri):
-      Turkiye duvar saati (UTC+3), oldugu gibi parse edilir.
-    - Sismik API satirlari (kandilli/afad/emsc/noa...): API UTC yazar;
-      TR duvar saatiyle karsilastirilabilirlik icin +10800sn eklenir.
-    Karisik-donem notu: bu kuraldan ONCE yazilmis API satirlari 3saat
-    geridedir; yeni karsilastirmalar kaynak-bazinda tutarlidir.
+      Turkiye duvar saati (Europe/Istanbul; tarihsel DST zoneinfo ile).
+    - Sismik API satirlari: UTC.
+    Naive `datetime.timestamp()` KULLANILMAZ (sistem-bagimli).
     """
+    from datetime import timezone, timedelta
+    try:
+        from zoneinfo import ZoneInfo
+        _TR = ZoneInfo("Europe/Istanbul")
+    except Exception:
+        # tzdata yoksa: 2016-sonrasi TR icin sabit +3 (tarihsel DST sapabilir)
+        _TR = timezone(timedelta(hours=3))
     if not occurred:
         return 0
     eid = str(event_id or "")
     ag = str(agency or "").lower()
     is_koeri = eid.startswith("koeri_") or ag == "koeri"
-    base = 0
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M",
-                "%Y.%m.%d %H:%M:%S", "%d.%m.%Y %H:%M:%S"):
+    s = str(occurred).strip()
+    dt = None
+    try:
+        iso = s.replace("Z", "+00:00") if s.endswith(("Z", "z")) else s
+        if "T" in iso or "+" in iso[10:] or iso[10:].count("-") > 2:
+            dt = datetime.fromisoformat(iso)
+    except (ValueError, TypeError):
+        dt = None
+    if dt is None:
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S",
+                    "%Y-%m-%d %H:%M", "%Y.%m.%d %H:%M:%S",
+                    "%d.%m.%Y %H:%M:%S"):
+            try:
+                dt = datetime.strptime(s[:19], fmt)
+                break
+            except (ValueError, TypeError):
+                continue
+    if dt is None:
         try:
-            base = int(datetime.strptime(occurred[:19], fmt).timestamp())
-            break
-        except (ValueError, TypeError):
-            continue
-    else:
-        try:
-            base = int(datetime.fromisoformat(occurred).timestamp())
+            dt = datetime.fromisoformat(s)
         except (ValueError, TypeError):
             return 0
-    if not base:
+    try:
+        if dt.tzinfo is None:
+            if is_koeri and _TR is not None:
+                dt = dt.replace(tzinfo=_TR)
+            else:
+                dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp())
+    except (ValueError, TypeError, OverflowError):
         return 0
-    if not is_koeri:
-        base += 10800  # API UTC -> TR duvar saati
-    return base
+
+
+def format_tr(epoch):
+    """Epoch -> Turkiye duvar saati metni (gosterim icin tek nokta)."""
+    try:
+        from zoneinfo import ZoneInfo
+        _TR = ZoneInfo("Europe/Istanbul")
+    except Exception:
+        from datetime import timezone, timedelta
+        _TR = timezone(timedelta(hours=3))
+    try:
+        from datetime import timezone
+        dt = datetime.fromtimestamp(int(epoch), tz=timezone.utc)
+        if _TR is not None:
+            dt = dt.astimezone(_TR)
+        return dt.strftime("%Y-%m-%d %H:%M")
+    except (TypeError, ValueError, OverflowError, OSError):
+        return "?"
 
 
 def get_db(path=None):
@@ -330,11 +367,98 @@ def init_main_db():
     conn.close()
 
 
+def _split_measurements(eq):
+    """Kayittan (ml, mw, md) cikar (sources listesi + dogrudan alanlar)."""
+    ml = eq.get("magnitude_ml")
+    mw = eq.get("magnitude_mw")
+    md = eq.get("magnitude_md")
+    if ml is None and mw is None and md is None:
+        for s in (eq.get("sources") or []):
+            if isinstance(s, dict):
+                sn, sm = s.get("name", ""), s.get("magnitude")
+                if sn == "kandilli" and sm:
+                    ml = sm
+                if sn == "afad" and sm:
+                    mw = sm
+    return ml, mw, md
+
+
+_MEAS_COLS = ("occurred_at", "timestamp", "latitude", "longitude",
+              "depth_km", "magnitude", "magnitude_ml", "magnitude_mw",
+              "magnitude_md", "location", "source", "region_tag")
+
+
+def _upsert_v1(conn, eq, region_tag):
+    """Gercek UPSERT: INSERT / UPDATE / degismediyse yazma / id-cakismasinda ret.
+
+    Donus: 'inserted' | 'updated' | 'unchanged' | 'id_conflict'.
+    REPLACE'ten farki: satir silinmez (PK/rowid korunur), olcumler
+    birlesir (eski dolu deger yeni bos ile ezilmez).
+    """
+    occurred = eq.get("occurred_at", "")
+    ts = _parse_occurred_ts(occurred, eq.get("source"), eq.get("event_id"))
+    tag = eq.get("region_tag") or region_tag
+    ml, mw, md = _split_measurements(eq)
+    new = {"occurred_at": occurred, "timestamp": ts,
+           "latitude": eq.get("latitude"), "longitude": eq.get("longitude"),
+           "depth_km": eq.get("depth_km"), "magnitude": eq.get("magnitude"),
+           "magnitude_ml": ml, "magnitude_mw": mw, "magnitude_md": md,
+           "location": eq.get("location"), "source": eq.get("source"),
+           "region_tag": tag}
+    eid = eq.get("event_id")
+    cur = conn.execute("SELECT id, " + ", ".join(_MEAS_COLS)
+                       + " FROM earthquakes WHERE event_id = ?", (eid,))
+    row = cur.fetchone()
+    if row is None:
+        try:
+            conn.execute(
+                """INSERT INTO earthquakes
+                    (id, event_id, occurred_at, timestamp, latitude, longitude,
+                     depth_km, magnitude, magnitude_ml, magnitude_mw, magnitude_md,
+                     location, source, region_tag)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (eq.get("id"), eid, occurred, ts, eq.get("latitude"),
+                 eq.get("longitude"), eq.get("depth_km"), eq.get("magnitude"),
+                 ml, mw, md, eq.get("location"), eq.get("source"), tag))
+            try:
+                conn.commit()
+            except Exception:
+                pass
+            return "inserted"
+        except Exception:
+            # Ayni sayisal id baska olayda: satir silmeden reddet.
+            return "id_conflict"
+    cols = ["id"] + list(_MEAS_COLS)
+    old = dict(zip(cols, row))
+    merged = {}
+    changed = False
+    for c in _MEAS_COLS:
+        ov, nv = old.get(c), new.get(c)
+        if nv is None and ov is not None:
+            merged[c] = ov
+        else:
+            merged[c] = nv
+            if nv != ov:
+                changed = True
+    if not changed:
+        return "unchanged"
+    conn.execute("UPDATE earthquakes SET occurred_at=?, timestamp=?, latitude=?,"
+                 " longitude=?, depth_km=?, magnitude=?, magnitude_ml=?,"
+                 " magnitude_mw=?, magnitude_md=?, location=?, source=?,"
+                 " region_tag=? WHERE event_id=?",
+                 tuple(merged[c] for c in _MEAS_COLS) + (eid,))
+    try:
+        conn.commit()
+    except Exception:
+        pass
+    return "updated"
+
+
 def insert_earthquake(eq, region_tag="marmara", db_path=None):
     """Tek deprem kaydı ekle (upsert).
 
-    db_path v2 semasiysa gozlem yazimina yonlenir (OR REPLACE YOK);
-    legacy'de davranis aynen korunur.
+    db_path v2 semasiysa gozlem yazimina yonlenir;
+    legacy'de gercek UPSERT (satir korunur, olcum birlesir).
     """
     path = db_path or MAIN_DB
     conn = get_db(path)
@@ -346,40 +470,7 @@ def insert_earthquake(eq, region_tag="marmara", db_path=None):
             conn.close()
     try:
         with _write_guard_for_path(path):
-            occurred = eq.get("occurred_at", "")
-            ts = _parse_occurred_ts(occurred, eq.get("source"),
-                                    eq.get("event_id"))
-            sources = eq.get("sources") or []
-            ml = mw = md = None
-            for s in sources:
-                if isinstance(s, dict):
-                    sn = s.get("name", "")
-                    sm = s.get("magnitude")
-                    if sn == "kandilli" and sm: ml = sm
-                    if sn == "afad" and sm: mw = sm
-            conn.execute("""
-            INSERT OR REPLACE INTO earthquakes
-                (id, event_id, occurred_at, timestamp, latitude, longitude,
-                 depth_km, magnitude, magnitude_ml, magnitude_mw, magnitude_md,
-                 location, source, region_tag)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-                eq.get("id"),
-                eq.get("event_id"),
-                occurred,
-                ts,
-                eq.get("latitude"),
-                eq.get("longitude"),
-                eq.get("depth_km"),
-                eq.get("magnitude"),
-                ml,
-                mw,
-                md,
-                eq.get("location"),
-                eq.get("source"),
-                region_tag,
-            ))
-            conn.commit()
+            return _upsert_v1(conn, eq, region_tag)
     finally:
         conn.close()
 
@@ -461,36 +552,19 @@ def bulk_insert_earthquakes(earthquakes, region_tag="marmara", db_path=None):
             conn.close()
     try:
         with _write_guard_for_path(path):
-            rows = []
-            for eq in earthquakes:
-                occurred = eq.get("occurred_at", "")
-                ts = _parse_occurred_ts(occurred, eq.get("source"),
-                                        eq.get("event_id"))
-                tag = eq.get("region_tag") or region_tag
-                sources = eq.get("sources") or []
-                ml = mw = md = None
-                for s in sources:
-                    if isinstance(s, dict):
-                        sn = s.get("name", "")
-                        sm = s.get("magnitude")
-                        if sn == "kandilli" and sm: ml = sm
-                        if sn == "afad" and sm: mw = sm
-                rows.append((
-                    eq.get("id"), eq.get("event_id"), occurred, ts,
-                    eq.get("latitude"), eq.get("longitude"), eq.get("depth_km"),
-                    eq.get("magnitude"), ml, mw, md,
-                    eq.get("location"), eq.get("source"), tag,
-                ))
-
-            conn.executemany("""
-            INSERT OR REPLACE INTO earthquakes
-                (id, event_id, occurred_at, timestamp, latitude, longitude,
-                 depth_km, magnitude, magnitude_ml, magnitude_mw, magnitude_md,
-                 location, source, region_tag)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, rows)
-            conn.commit()
-            return len(rows)
+            counts = {"inserted": 0, "updated": 0, "unchanged": 0,
+                      "id_conflict": 0}
+            for eq in earthquakes or []:
+                try:
+                    st = _upsert_v1(conn, eq, eq.get("region_tag") or region_tag)
+                except Exception:
+                    st = "id_conflict"
+                counts[st] = counts.get(st, 0) + 1
+            try:
+                conn.commit()
+            except Exception:
+                pass
+            return counts.get("inserted", 0) + counts.get("updated", 0)
     finally:
         conn.close()
 

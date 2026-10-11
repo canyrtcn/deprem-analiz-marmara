@@ -954,11 +954,14 @@ def get_comprehensive_risk_report(region="marmara", max_age=45, db_path=None):
     quakes = get_earthquakes(since=datetime.now() - timedelta(days=30), region=region,
                              db_path=db_path)
     _n_raw = len(quakes)
+    # B4: dedupe basarisizsa sessizce ham veriye DONULMEZ; rapor hata
+    # durumuna duser (cift-sayim riski gizlenmez).
     try:
         from deprem_izleme.dedup import dedupe_records
         quakes = dedupe_records(quakes)
-    except Exception:
-        pass
+    except Exception as e:
+        return {"ok": False, "error": f"olay birlestirme hatasi: {e}",
+                "n_raw": _n_raw, "n_unique": None, "region": region}
     _n_unique = len(quakes)
     mags = [q["magnitude"] for q in quakes if q.get("magnitude")]
 

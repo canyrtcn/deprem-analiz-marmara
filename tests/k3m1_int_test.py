@@ -96,7 +96,10 @@ nver = c.execute("SELECT COUNT(*) FROM observation_versions").fetchone()[0]
 old = c.execute("SELECT ml, revision FROM observation_versions WHERE obs_id=(SELECT obs_id FROM observations WHERE source_event_id='ko_0') AND version_no=1").fetchone()
 c.close()
 check("INT: v2 revizyon v3 uretir, v1+v2 korunur", n2r == 1 and nver == 21
-      and old[0] is None and old[1] == "unknown", (n2r, nver, tuple(old) if old else None))
+      # B2 notu: bulk artik magnitude_ml ALANINI da korur (eski bulk yalnizca
+      # sources listesine bakip alani dusuruyordu). v1 ml=2.0 olmasi KORUMA
+      # kanitidir (kayip degil); revision 'unknown' degismedi.
+      and old[0] == 2.0 and old[1] == "unknown", (n2r, nver, tuple(old) if old else None))
 # ID cakismasi: ayni sayisal id, farkli olay -> ezme yok
 c = sqlite3.connect(V2)
 n_before = c.execute("SELECT COUNT(*) FROM observations").fetchone()[0]

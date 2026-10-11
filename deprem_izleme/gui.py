@@ -1261,14 +1261,28 @@ class DepremGUI(ctk.CTk):
                       for k, v in self.map_cache.items()}
             layers["uygulama"] = dbq
             events = dedupe_layers(layers)
-        except Exception:
-            events = []
+        except Exception as e:
+            # B4/B6: sessiz bos-harita YOK; durumu bildir.
+            try:
+                self.map_status.configure(
+                    text=f"Olay birleştirme hatası: {e}",
+                    text_color=COLOR_DANGER)
+            except Exception:
+                pass
+            return
         def _fp(items):
             try:
+                import hashlib as _hl
+                h = _hl.md5()
+                for it in items or []:
+                    h.update(repr((it.get("event_id"), it.get("timestamp"),
+                                   it.get("magnitude"), it.get("latitude"),
+                                   it.get("longitude"))).encode())
                 return (len(items), items[0].get("timestamp", 0) if items else 0,
-                        items[-1].get("timestamp", 0) if items else 0)
+                        items[-1].get("timestamp", 0) if items else 0,
+                        h.hexdigest()[:12])
             except Exception:
-                return (0, 0, 0)
+                return (0, 0, 0, "")
         sig = (_fp(dbq), _fp(self.map_cache.get("sismik")),
                _fp(self.map_cache.get("koeri")), self.map_days, len(events))
         if not force and sig == getattr(self, "_map_sync_sig", None):
@@ -1285,6 +1299,10 @@ class DepremGUI(ctk.CTk):
     def _update_map_counts(self):
         counts = {k: len(self._filter_time(v)) for k, v in self.map_cache.items()}
         uniq = len(getattr(self, "map_events", []) or [])
+        try:
+            vis = self.embedded_map.total_count()
+        except Exception:
+            vis = uniq
         for key, label in [("uygulama", "Uygulama"), ("sismik", "Sismik"),
                            ("koeri", "KOERI"), ("fay", "Faylar")]:
             sw = self.map_switches.get(key)
@@ -1297,7 +1315,12 @@ class DepremGUI(ctk.CTk):
             else:
                 sw.configure(text=f"{label} ({n})")
         try:
-            self.map_unique_label.configure(text=f"{uniq} benzersiz olay")
+            # B6: toplam benzersiz vs gorunur benzersiz ayrimi.
+            if vis == uniq:
+                self.map_unique_label.configure(text=f"{uniq} benzersiz olay")
+            else:
+                self.map_unique_label.configure(
+                    text=f"{vis} görünür / {uniq} benzersiz olay")
         except Exception:
             pass
 
@@ -1313,6 +1336,22 @@ class DepremGUI(ctk.CTk):
             self.embedded_map.set_faults_visible(on)
         else:
             self.embedded_map.set_layer_visible(key, on)
+        try:
+            self._update_map_counts()
+        except Exception:
+            pass
+        # B6: secili olay filtreyle gizlendiyse detay panelini guncelle.
+        try:
+            from deprem_izleme.osm_map import _event_key as _ek
+            sel = getattr(self.embedded_map, "_selected", None)
+            if sel and not any(
+                    _ek(e) == sel and self.embedded_map._event_visible(e)
+                    for e in (getattr(self, "map_events", []) or [])):
+                self.map_detail_title.configure(text="Nokta veya fay seçin")
+                self.map_detail_body.configure(
+                    text="Seçili olay filtre nedeniyle gizli.")
+        except Exception:
+            pass
 
     def _refresh_map_live(self):
         """Sismik + KOERI canlı çekiş (arka plan)."""

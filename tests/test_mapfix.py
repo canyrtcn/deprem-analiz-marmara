@@ -282,6 +282,119 @@ try:
 finally:
     _DBM9.MAIN_DB = _old_main
 
+# 11. B1: kimlik-duzlemi + veto + zincirleme + determinizm
+from deprem_izleme.dedup import (
+    strong_id, _id_match, _id_conflict, dedupe_records as _ddr)
+_T1 = 1788000000
+
+
+def _bq(eid, dt, m=3.5, src="sismik", sid=None, la=40.70, lo=28.50):
+    r = {"event_id": eid, "timestamp": _T1 + dt, "latitude": la,
+         "longitude": lo, "magnitude": m, "source": src}
+    if sid is not None:
+        r["sismik_id"] = sid
+    return r
+
+
+check("D11: guclu kimlik cikarimi", strong_id({"sismik_id": 884746}) == "sismik_id:884746"
+      and strong_id({}) is None)
+check("D11: ayni kimlik 3dk revizyon tek",
+      len(_ddr([_bq("a", 0, sid=884746), _bq("b", 180, sid=884746)])) == 1)
+check("D11: ayni kimlik 30dk ayni olay tek",
+      len(_ddr([_bq("a", 0, sid=884746), _bq("b", 1800, sid=884746)])) == 1)
+check("D11: ayni kurum 25sn farkli kimlik ayri",
+      len(_ddr([_bq("a", 0, src="koeri", sid=1), _bq("b", 25, src="koeri", sid=2)])) == 2)
+check("D11: farkli kurum 25sn ayni deprem tek",
+      len(_ddr([_bq("a", 0, src="kandilli"), _bq("b", 25, src="afad")])) == 1)
+check("D11: farkli kurum benzer artci farkli kimlik ayri",
+      len(_ddr([_bq("a", 0, m=3.5, src="kandilli", sid=100),
+                _bq("b", 60, m=3.6, src="afad", sid=200)])) == 2)
+check("D11: sismik+koeri ayni gozlem tek",
+      len(_ddr([_bq("a", 0, src="sismik", sid=884746),
+                _bq("b", 20, src="kandilli")])) == 1)
+_A = _bq("A", 0, m=3.0, src="kandilli")
+_B = _bq("B", 60, m=3.3, src="afad")
+_C = _bq("C", 120, m=3.8, src="emsc")
+check("D11: zincir A-B-C iki olay", len(_ddr([_A, _B, _C])) == 2)
+check("D11: ters sira ayni sonuc",
+      [e["member_count"] for e in _ddr([_A, _B, _C])]
+      == [e["member_count"] for e in _ddr([_C, _B, _A])])
+check("D11: eksik koordinat birlesmez",
+      len(_ddr([_bq("a", 0), dict(_bq("b", 10), latitude=None)])) == 2)
+check("D11: eksik buyukluk birlesmez",
+      len(_ddr([_bq("a", 0), dict(_bq("b", 10), magnitude=None)])) == 2)
+import time as _t11
+_bulk = [_bq(f"k{i}", (i % 100) * 60, m=2.0 + (i % 7) * 0.3,
+             src=["sismik", "kandilli", "afad"][i % 3],
+             sid=(5000 + i // 3) if i % 3 == 0 else None) for i in range(600)]
+_t0 = _t11.time()
+_r11 = _ddr(_bulk)
+_dt11 = _t11.time() - _t0
+check("D11: 600 kayit performans", _dt11 < 30.0, f"{_dt11:.1f}sn/{len(_r11)}olay")
+
+# 12. B2: gercek UPSERT davranisi (sentetik DB)
+import sqlite3 as _sq12
+_tdb12 = _os.path.join(TESTTMP, "b2_upsert.db")
+for s in ("", "-wal", "-shm", "-journal"):
+    if _os.path.exists(_tdb12 + s):
+        _os.remove(_tdb12 + s)
+import deprem_izleme.db as _DB12
+_old12 = _DB12.MAIN_DB
+_DB12.MAIN_DB = _tdb12
+try:
+    _DB12.init_main_db()
+    _bq12 = {"id": 11, "event_id": "u1", "occurred_at": "2026-09-01 10:00:00",
+             "latitude": 40.7, "longitude": 28.5, "depth_km": 5.0,
+             "magnitude": 3.5, "source": "sismik",
+             "sources": [{"name": "kandilli", "magnitude": 3.5}]}
+    check("D12: ilk yazim inserted",
+          _DB12.insert_earthquake(dict(_bq12), db_path=_tdb12) == "inserted")
+    _c12 = _DB12.get_db(_tdb12)
+    _rid = _c12.execute("SELECT rowid FROM earthquakes WHERE event_id='u1'").fetchone()[0]
+    _c12.close()
+    check("D12: ayni kayit unchanged",
+          _DB12.insert_earthquake(dict(_bq12), db_path=_tdb12) == "unchanged")
+    _rv = dict(_bq12, magnitude=3.7, sources=[{"name": "afad", "magnitude": 3.7}])
+    check("D12: revizyon updated",
+          _DB12.insert_earthquake(_rv, db_path=_tdb12) == "updated")
+    _c12 = _DB12.get_db(_tdb12)
+    _r12 = _c12.execute("SELECT rowid, magnitude, magnitude_ml, magnitude_mw"
+                        " FROM earthquakes WHERE event_id='u1'").fetchone()
+    _c12.close()
+    check("D12: PK korunur + olcum birlesir",
+          _r12[0] == _rid and abs(_r12[1] - 3.7) < 1e-9
+          and abs(_r12[2] - 3.5) < 1e-9 and abs(_r12[3] - 3.7) < 1e-9, tuple(_r12))
+    check("D12: id cakismasi reddedilir",
+          _DB12.insert_earthquake(dict(_bq12, event_id="u2", id=11),
+                                  db_path=_tdb12) == "id_conflict")
+    _c12 = _DB12.get_db(_tdb12)
+    _n12 = _c12.execute("SELECT COUNT(*) FROM earthquakes").fetchone()[0]
+    _c12.close()
+    check("D12: satir kaybi yok", _n12 == 1, _n12)
+finally:
+    _DB12.MAIN_DB = _old12
+
+# 13. B3: tz-aware zaman (sistem-bagimsiz M3.5 esitligi + mutlak dogruluk)
+from deprem_izleme.db import _parse_occurred_ts as _pts, format_tr as _ftr
+_api13 = _pts("2026-10-10 19:08:49", "sismik", "884746")
+_ko13 = _pts("2026-10-10 22:08:49", "koeri", "koeri_x")
+_z13 = _pts("2026-10-10T19:08:49Z", "sismik", "1")
+check("D13: M3.5 API/KOERI ayni epoch", _api13 == _ko13, (_api13, _ko13))
+check("D13: acik Z ayni epoch", _api13 == _z13)
+check("D13: mutlak epoch dogru", _api13 == 1791659329, _api13)
+check("D13: gosterim TR duvar saati", _ftr(_api13) == "2026-10-10 22:08", _ftr(_api13))
+check("D13: bozuk girdi 0", _pts("yok-boyle-tarih", "sismik", "1") == 0
+      and _pts("", "sismik", "1") == 0 and _ftr("x") == "?")
+
+# 14. B6: gorunur/toplam sayac + imza icerik-hash
+from deprem_izleme.osm_map import OsmMap as _OM14
+check("D14: total_count gorunur olayi sayar",
+      hasattr(_OM14, "total_count") and hasattr(_OM14, "unique_count"))
+_src14 = open(_os.path.join(REPO_ROOT, "deprem_izleme", "gui.py"), encoding="utf-8").read()
+check("D14: sayac ayrimi metni", "görünür / " in _src14 and "benzersiz olay" in _src14)
+check("D14: imza icerik-hashi", "hexdigest" in _src14 and "_map_sync_sig" in _src14)
+check("D14: secim-filtre detayi", "filtre nedeniyle gizli" in _src14)
+
 print()
 print("SONUC:", "TUMU PASS" if all(ok) else f"{ok.count(False)} FAIL")
 sys.exit(0 if all(ok) else 1)

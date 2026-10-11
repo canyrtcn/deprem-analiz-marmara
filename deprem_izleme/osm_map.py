@@ -11,6 +11,7 @@ ic projeksiyon/pan/zoom TkinterMapView tarafindan yonetilir.
 """
 import os
 import threading
+import time
 
 import customtkinter as ctk
 
@@ -303,25 +304,35 @@ class OsmMap(ctk.CTkFrame):
         self._warm_tiles()
 
     def _warm_tiles(self):
-        """Gorunur karo eksiklerini ana-thread guvencesiyle kapat."""
+        """Gorunur karo eksiklerini ana-thread guvencesiyle kapat.
+
+        B5: Tkinter durumuna (canvas_tile_array, zoom, cache) YALNIZCA
+        ana thread dokunur. Worker'a salt-veri snapshot (pos listesi)
+        verilir; sonuclar thread-safe kuyruk (_tile_pending) ile doner;
+        PhotoImage uretimi ana thread'dedir (_warm_tick).
+        """
         try:
             arr = getattr(self.map, "canvas_tile_array", None) or []
             zoom = round(self.map.zoom)
+            server = self.map.tile_server
+            # Ana thread snapshot'i: eksik karo anahtarlari (tekil).
+            want = []
+            seen = set()
             for col in arr:
                 for ct in list(col or []):
                     try:
                         pos = ct.tile_name_position
-                        if f"{zoom}{pos[0]}{pos[1]}" not in self.map.tile_image_cache:
-                            break
+                        k = f"{zoom}{pos[0]}{pos[1]}"
+                        if k not in seen:
+                            seen.add(k)
+                            if k not in self.map.tile_image_cache:
+                                want.append((zoom, pos[0], pos[1]))
                     except Exception:
                         pass
-                else:
-                    continue
-                break
-            else:
-                return  # eksik yok
         except Exception:
-            pass
+            return
+        if not want:
+            return  # eksik yok
         try:
             self._tile_gen += 1
         except Exception:
@@ -331,8 +342,11 @@ class OsmMap(ctk.CTkFrame):
         self._tile_warming = True
         try:
             import threading
+            import queue as _queue
+            if not hasattr(self, "_tile_queue") or self._tile_queue is None:
+                self._tile_queue = _queue.Queue()
             threading.Thread(target=self._warm_fetch, daemon=True,
-                             args=(self._tile_gen,)).start()
+                             args=(self._tile_gen, server, want)).start()
         except Exception:
             self._tile_warming = False
             return
@@ -341,58 +355,81 @@ class OsmMap(ctk.CTkFrame):
         except Exception:
             pass
 
-    def _warm_fetch(self, gen):
+    def _warm_fetch(self, gen, server, want):
+        """Worker: SADECE ag indirme + bayt isleme (Tkinter'a dokunmaz).
+
+        Girdi salt-veri snapshot'tir (ana thread uretir). Sonuclar
+        thread-safe kuyruga gider. Karo basi tek deneme + kisa backoff;
+        sonsuz retry YOK (basarisiz karo bir sonraki tetiklemeye kalir).
+        """
         try:
             import requests
         except Exception:
             self._tile_warming = False
             return
         try:
-            arr = list(getattr(self.map, "canvas_tile_array", None) or [])
-            zoom = round(self.map.zoom)
-            server = self.map.tile_server
-            for col in arr:
-                for ct in list(col or []):
-                    if gen != self._tile_gen:
-                        break
-                    try:
-                        pos = ct.tile_name_position
-                    except Exception:
-                        continue
-                    if f"{zoom}{pos[0]}{pos[1]}" in self.map.tile_image_cache:
-                        continue
-                    try:
-                        url = (server.replace("{x}", str(pos[0]))
-                                     .replace("{y}", str(pos[1]))
-                                     .replace("{z}", str(zoom)))
-                        r = requests.get(
-                            url, timeout=12,
-                            headers={"User-Agent": "DepremAnaliz-Marmara/1.0"})
-                        if r.status_code == 200 and r.content:
-                            if is_placeholder_tile(r.content):
-                                # hata karosunu basarili sayma, onbellege alma
-                                self._tile_noinfo.append((zoom, pos[0], pos[1]))
-                            else:
-                                self._tile_pending.append(
-                                    (gen, zoom, pos[0], pos[1], r.content))
-                    except Exception:
-                        pass
+            import queue as _queue
+            q = getattr(self, "_tile_queue", None)
+            if q is None:
+                q = _queue.Queue()
+                self._tile_queue = q
+            for zoom, x, y in want:
+                if gen != self._tile_gen:
+                    break
+                try:
+                    url = (server.replace("{x}", str(x))
+                                 .replace("{y}", str(y))
+                                 .replace("{z}", str(zoom)))
+                    r = requests.get(
+                        url, timeout=12,
+                        headers={"User-Agent": "DepremAnaliz-Marmara/1.0"})
+                    if r.status_code == 200 and r.content:
+                        if is_placeholder_tile(r.content):
+                            q.put(("noinfo", gen, zoom, x, y, None))
+                        else:
+                            q.put(("tile", gen, zoom, x, y, r.content))
+                    else:
+                        time.sleep(0.2)
+                except Exception:
+                    time.sleep(0.2)
         except Exception:
             pass
         finally:
             self._tile_warming = False
 
     def _warm_tick(self):
+        # Ana thread: kuyrugu bosalt, PhotoImage uret, canvas'a bas.
+        # Eski jenerasyon sonuclari o anki gorunumu EZEMEZ (gen + zoom
+        # cift kontrolu).
         try:
             my_gen = self._tile_gen
             from PIL import Image, ImageTk
             import io
-            pend, self._tile_pending = self._tile_pending, []
-            for gen, zoom, x, y, raw in pend:
-                if gen != my_gen:
+            try:
+                q = getattr(self, "_tile_queue", None)
+                pend = []
+                if q is not None:
+                    while True:
+                        try:
+                            pend.append(q.get_nowait())
+                        except Exception:
+                            break
+            except Exception:
+                pend = []
+            cur_zoom = None
+            try:
+                cur_zoom = round(self.map.zoom)
+            except Exception:
+                pass
+            noinfo = []
+            for kind, gen, zoom, x, y, raw in pend:
+                if gen != my_gen or (cur_zoom is not None and zoom != cur_zoom):
                     continue
                 key = f"{zoom}{x}{y}"
                 try:
+                    if kind == "noinfo":
+                        noinfo.append((zoom, x, y))
+                        continue
                     if key in self.map.tile_image_cache:
                         continue
                     img = Image.open(io.BytesIO(raw))
@@ -402,7 +439,6 @@ class OsmMap(ctk.CTkFrame):
             # yer-tutucu/eksik karolar: kutuphanenin hata karosunu ort,
             # notr geri-donus goster + durumu acikla
             try:
-                noinfo, self._tile_noinfo = self._tile_noinfo, []
                 if noinfo:
                     nd = _nodata_icon(self._light)
                     for zoom, x, y in noinfo:
@@ -445,8 +481,8 @@ class OsmMap(ctk.CTkFrame):
                             pass
             except Exception:
                 pass
-            if (self._tile_pending or missing) and my_gen == self._tile_gen:
-                if not self._tile_warming and missing:
+            if missing and my_gen == self._tile_gen:
+                if not self._tile_warming:
                     self._warm_tiles()
                 else:
                     try:
