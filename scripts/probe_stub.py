@@ -27,7 +27,10 @@ def main():
             secs = 60
         time.sleep(max(1, secs))
         return 0
-    print(STUB_VERSION)
+    # Bayraksiz (yardimcinin lansman bicimi): gercek GUI gibi yasayan
+    # islemi taklit et; yasama dogrulamasi (12sn) icinde olmemeli.
+    print(STUB_VERSION, flush=True)
+    time.sleep(30)
     return 0
 
 

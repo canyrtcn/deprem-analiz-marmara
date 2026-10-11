@@ -107,6 +107,8 @@ def main(argv=None):
     ap.add_argument("--exe", required=True)
     ap.add_argument("--version", required=True)
     ap.add_argument("--wait", type=int, default=60)
+    ap.add_argument("--alive-check", type=int, default=12,
+                    help="yeni islemin yasama dogrulama suresi (sn)")
     a = ap.parse_args(argv)
     staging = os.path.abspath(a.staging)
     appdir = os.path.abspath(a.appdir)
@@ -200,6 +202,9 @@ def main(argv=None):
         names = {e.lower() for e in os.listdir(new_root)}
         if not any(n.endswith(".exe") for n in names):
             raise RuntimeError("pakette exe bulunamadi")
+        if a.exe.lower() not in names:
+            raise RuntimeError(
+                f"pakette beklenen exe yok ({a.exe})")
         if "_internal" not in names:
             raise RuntimeError("pakette _internal bulunamadi (eksik paket)")
         copied = _copy_allowlist(new_root, appdir)
@@ -209,28 +214,55 @@ def main(argv=None):
         _rollback(appdir, backup, staging)
         return fail("kurulum", f"kurulum basarisiz, geri alindi: {e}")
 
-    # 5. saglik: yeni exe --update-probe
+    # 5. saglik: yeni exe --update-probe (kilit gecikmesine karsi tekrarli)
+    probed = ""
+    _perr = ""
+    for _try in range(3):
+        try:
+            p = subprocess.run([exe_path, "--update-probe"], capture_output=True,
+                               text=True, timeout=25)
+            got = (p.stdout or "").strip().split()
+            probed = got[0] if got else ""
+            if p.returncode == 0 and probed == a.version:
+                break
+            _perr = f"cikti={probed!r} rc={p.returncode}"
+            time.sleep(3)
+        except Exception as e:
+            _perr = str(e)[:100]
+            time.sleep(3)
+    if probed != a.version:
+        _rollback(appdir, backup, staging, installed=result.get("installed"))
+        return fail("saglik",
+                    f"yeni surum acilamadi, geri alindi: {_perr or 'surum uyusmadi'}")
+    _log(staging, f"saglik OK (v{probed})")
+
+    # 6. yeni surumu baslat (ayrilmis surec) + yasama dogrulamasi.
+    # Baslatma veya erken olum -> ROLLBACK + basarisizlik (asla ok=True).
     try:
-        p = subprocess.run([exe_path, "--update-probe"], capture_output=True,
-                           text=True, timeout=60)
-        got = (p.stdout or "").strip().split()
-        got = got[0] if got else ""
-        if p.returncode != 0 or got != a.version:
-            raise RuntimeError(
-                f"saglik dogrulamasi basarisiz (cikti={got!r}, beklenen={a.version})")
-        _log(staging, f"saglik OK (v{got})")
+        proc = subprocess.Popen([exe_path],
+                                creationflags=getattr(subprocess, "DETACHED_PROCESS", 0),
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                stdin=subprocess.DEVNULL, close_fds=True)
     except Exception as e:
         _rollback(appdir, backup, staging)
-        return fail("saglik", f"yeni surum acilamadi, geri alindi: {e}")
-
-    # 6. yeni surumu baslat (ayrilmis surec)
+        return fail("baslatma", f"yeni surum baslatilamadi, geri alindi: {e}")
     try:
-        subprocess.Popen([exe_path],
-                         creationflags=getattr(subprocess, "DETACHED_PROCESS", 0),
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         stdin=subprocess.DEVNULL, close_fds=True)
-    except Exception as e:
-        _log(staging, f"uyari: yeniden baslatilamadi: {e}")
+        alive = max(1, int(a.alive_check))
+    except Exception:
+        alive = 12
+    _log(staging, f"yeni islem yasama dogrulamasi ({alive}sn)")
+    deadline = time.monotonic() + alive
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            _rollback(appdir, backup, staging)
+            return fail("yasama",
+                        f"yeni surum erken kapandi (rc={proc.returncode}), geri alindi")
+        time.sleep(0.5)
+    if proc.poll() is not None:
+        _rollback(appdir, backup, staging)
+        return fail("yasama",
+                    f"yeni surum erken kapandi (rc={proc.returncode}), geri alindi")
+    _log(staging, "yasama OK")
     result["ok"] = True
     result["step"] = "tamamlandi"
     result["version"] = a.version
@@ -244,8 +276,20 @@ def main(argv=None):
     return 0
 
 
-def _rollback(appdir, backup, staging):
+def _rollback(appdir, backup, staging, installed=None):
     try:
+        # Kurulumun ekledigi yedek-disi yeni dosyalari temizle.
+        for name in installed or []:
+            try:
+                bkp = os.path.join(backup, name)
+                if not os.path.exists(bkp):
+                    d = os.path.join(appdir, name)
+                    if os.path.isdir(d):
+                        shutil.rmtree(d)
+                    elif os.path.exists(d):
+                        os.remove(d)
+            except Exception:
+                pass
         for name in os.listdir(backup):
             s = os.path.join(backup, name)
             d = os.path.join(appdir, name)

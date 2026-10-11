@@ -285,20 +285,157 @@ rc2 = UH.main(["--staging", _ST2, "--appdir", UNI, "--pid", "99999999",
 check("U18: ikinci is engellenir", rc2 == 1)
 
 # U23: yardimci staging'e kopyalanarak baslatilir (kilitlenme onlemi)
-import sys as _sys
 _FA = tempfile.mkdtemp(prefix="upd_fakeapp_")
 os.makedirs(os.path.join(_FA, "_internal"))
 open(os.path.join(_FA, "_internal", "update-helper.exe"), "wb").write(b"H")
 _ST3 = tempfile.mkdtemp(prefix="upd_stg3_")
-with _mk.patch.object(_sys, "frozen", True, create=True), \
-     _mk.patch.object(_sys, "platform", "win32"), \
-     _mk.patch.object(_sys, "executable", os.path.join(_FA, "a.exe")), \
+with _mk.patch.object(sys, "frozen", True, create=True), \
+     _mk.patch.object(sys, "platform", "win32"), \
+     _mk.patch.object(sys, "executable", os.path.join(_FA, "a.exe")), \
      _mk.patch.object(UP.subprocess, "Popen") as _pp, \
      _mk.patch.object(UP, "_app_dir", return_value=_FA):
     _r23 = UP.launch_helper(_ST3, "9.9.9")
 check("U23: helper staging'den baslatilir",
       _r23 is True and os.path.exists(os.path.join(_ST3, "update-helper.exe"))
       and _pp.call_count == 1, str(_r23))
+
+# U24: lansman Popen'i patlarsa -> rollback + ok=False + rc=1 (asla ok=True)
+# U25: yeni islem erken olurse -> rollback + ok=False
+# Onkosul: probe GECER (run mock'lu); staging exe'si gercekten calisabilen
+# ama argsiz hemen olen bir exe (ping klonu) -> lansman davranisi gercek.
+import shutil as _sh
+_H24 = tempfile.mkdtemp(prefix="upd_h24_")
+_A24 = tempfile.mkdtemp(prefix="upd_a24_")
+_ping = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
+                     "System32", "ping.exe")
+_sh.copy2(_ping, os.path.join(_H24, "deprem-analiz-marmara.exe"))
+os.makedirs(os.path.join(_H24, "_internal"))
+open(os.path.join(_H24, "_internal", "n.pyd"), "wb").write(b"N")
+_sh.copy2(_ping, os.path.join(_A24, "deprem-analiz-marmara.exe"))
+open(os.path.join(_A24, "deprem-analiz-marmara.exe"), "r+b").write(b"")
+os.makedirs(os.path.join(_A24, "_internal"))
+open(os.path.join(_A24, "_internal", "o.pyd"), "wb").write(b"O")
+_ESKI24 = open(os.path.join(_A24, "deprem-analiz-marmara.exe"), "rb").read()
+
+
+class _FakeProc:
+    def __init__(self, rc):
+        self._rc = rc
+    def poll(self):
+        return self._rc
+
+
+class _RunOk:
+    returncode = 0
+    stdout = "X"
+
+
+def _run24(launch):
+    import subprocess as _sp
+    _real = _sp.Popen
+    def _fp(*a, **k):
+        args = a[0] if a else k.get("args", [])
+        if isinstance(args, list) and "--update-probe" in args:
+            return _real(*a, **k)
+        return launch()
+    with _mk.patch.object(_sp, "Popen", side_effect=_fp), \
+         _mk.patch.object(_sp, "run", return_value=_RunOk()):
+        return UH.main(["--staging", _H24, "--appdir", _A24,
+                        "--pid", "99999999", "--exe", "deprem-analiz-marmara.exe",
+                        "--version", "X", "--wait", "5", "--alive-check", "2"])
+
+
+def _raise():
+    raise OSError("lansman patladi")
+_rc24 = _run24(_raise)
+import json as _js
+_res24 = _js.load(open(os.path.join(_H24, "update-result.json"), encoding="utf-8"))
+check("U24: lansman hatasinda ok=False",
+      _rc24 == 1 and _res24.get("ok") is not True
+      and _res24.get("step") == "baslatma", f"rc={_rc24}")
+check("U24: lansman hatasinda rollback",
+      open(os.path.join(_A24, "deprem-analiz-marmara.exe"), "rb").read() == _ESKI24)
+
+# U25: Popen GERCEK; ping-klonu argsiz hemen olur -> yasama yakalar
+# (U24'ten bagimsiz taze dizinler: kilit/yedek artigi tasinmaz.)
+import subprocess as _spu
+_H25 = tempfile.mkdtemp(prefix="upd_h25_")
+_A25 = tempfile.mkdtemp(prefix="upd_a25_")
+_sh.copy2(_ping, os.path.join(_H25, "deprem-analiz-marmara.exe"))
+os.makedirs(os.path.join(_H25, "_internal"))
+open(os.path.join(_H25, "_internal", "n.pyd"), "wb").write(b"N")
+_sh.copy2(_ping, os.path.join(_A25, "deprem-analiz-marmara.exe"))
+os.makedirs(os.path.join(_A25, "_internal"))
+open(os.path.join(_A25, "_internal", "o.pyd"), "wb").write(b"O")
+_ESKI25 = open(os.path.join(_A25, "deprem-analiz-marmara.exe"), "rb").read()
+_REAL_POPEN = _spu.Popen
+def _real_launch():
+    return _REAL_POPEN(
+        [os.path.join(_A25, "deprem-analiz-marmara.exe")],
+        stdout=_spu.DEVNULL, stderr=_spu.DEVNULL,
+        stdin=_spu.DEVNULL)
+def _fp25(*a, **k):
+    args = a[0] if a else k.get("args", [])
+    if isinstance(args, list) and "--update-probe" in args:
+        return _REAL_POPEN(*a, **k)
+    return _real_launch()
+with _mk.patch.object(_spu, "Popen", side_effect=_fp25), \
+     _mk.patch.object(_spu, "run", return_value=_RunOk()):
+    _rc25 = UH.main(["--staging", _H25, "--appdir", _A25,
+                     "--pid", "99999999", "--exe", "deprem-analiz-marmara.exe",
+                     "--version", "X", "--wait", "5", "--alive-check", "4"])
+_res25 = _js.load(open(os.path.join(_H25, "update-result.json"), encoding="utf-8"))
+check("U25: erken olumde ok=False",
+      _rc25 == 1 and _res25.get("ok") is not True
+      and _res25.get("step") == "yasama", f"rc={_rc25}")
+check("U25: erken olumde rollback",
+      open(os.path.join(_A25, "deprem-analiz-marmara.exe"), "rb").read() == _ESKI25)
+
+# U26: staging'de beklenen exe yoksa erken red (yanlis dosya kurulmaz)
+_H26 = tempfile.mkdtemp(prefix="upd_h26_")
+_A26 = tempfile.mkdtemp(prefix="upd_a26_")
+open(os.path.join(_H26, "sahte.exe"), "wb").write(b"z")
+os.makedirs(os.path.join(_H26, "_internal"))
+open(os.path.join(_A26, "deprem-analiz-marmara.exe"), "wb").write(b"ESKI26")
+os.makedirs(os.path.join(_A26, "_internal"))
+_rc26 = UH.main(["--staging", _H26, "--appdir", _A26,
+                 "--pid", "99999999", "--exe", "deprem-analiz-marmara.exe",
+                 "--version", "X", "--wait", "5"])
+_res26 = _js.load(open(os.path.join(_H26, "update-result.json"), encoding="utf-8"))
+check("U26: yanlis paket erken reddedilir",
+      _rc26 == 1 and "beklenen exe" in _res26.get("error", ""),
+      _res26.get("error", "")[:60])
+check("U26: yanlis dosya kurulmaz",
+      not os.path.exists(os.path.join(_A26, "sahte.exe"))
+      and open(os.path.join(_A26, "deprem-analiz-marmara.exe"), "rb").read() == b"ESKI26")
+
+# U27: probe ilk denemelerde takilirsa tekrar dener (kilit gecikmesi)
+import subprocess as _sp27
+_tries = {"n": 0}
+class _RunSlow:
+    returncode = 0
+    stdout = "X"
+def _run27(*a, **k):
+    _tries["n"] += 1
+    if _tries["n"] < 3:
+        raise subprocess.TimeoutExpired(cmd="probe", timeout=25)
+    return _RunSlow()
+_H27 = tempfile.mkdtemp(prefix="upd_h27_")
+_A27 = tempfile.mkdtemp(prefix="upd_a27_")
+_sh.copy2(_ping, os.path.join(_H27, "deprem-analiz-marmara.exe"))
+os.makedirs(os.path.join(_H27, "_internal"))
+_sh.copy2(_ping, os.path.join(_A27, "deprem-analiz-marmara.exe"))
+os.makedirs(os.path.join(_A27, "_internal"))
+with _mk.patch.object(_sp27, "run", side_effect=_run27), \
+     _mk.patch.object(_sp27, "Popen") as _pp27:
+    _pp27.return_value.poll.return_value = None
+    _rc27 = UH.main(["--staging", _H27, "--appdir", _A27,
+                     "--pid", "99999999", "--exe", "deprem-analiz-marmara.exe",
+                     "--version", "X", "--wait", "5", "--alive-check", "1"])
+_res27 = _js.load(open(os.path.join(_H27, "update-result.json"), encoding="utf-8"))
+check("U27: probe retry ile toparlar",
+      _rc27 == 0 and _res27.get("ok") is True and _tries["n"] >= 3,
+      f"rc={_rc27} deneme={_tries['n']}")
 
 print(f"\nBIRIM: {len(PASS)} PASS / {len(FAIL)} FAIL")
 if FAIL:

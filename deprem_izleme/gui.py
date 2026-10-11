@@ -586,6 +586,12 @@ class DepremGUI(ctk.CTk):
         self._alive = False
         self.bg_running = False
         try:
+            _bt = getattr(self, "bg_thread", None)
+            if _bt is not None and _bt.is_alive():
+                _bt.join(timeout=10)
+        except Exception:
+            pass
+        try:
             self.destroy()
         except Exception:
             pass
@@ -2743,16 +2749,12 @@ class DepremGUI(ctk.CTk):
                 pass
 
     def _quit_for_update(self):
-        """Güncelleyici .bat devralır; uygulamayı sessizce kapat."""
+        # Guncelleme yardimcisi PID'in bitmesini bekledigi icin kaba
+        # sonlandirmaya (os._exit) gerek yok. Ana thread'de normal
+        # guvenli kapanis yapilir; yardimci kapanisi bekler.
+        # (Worker thread'den cagrilir -> _post_ui ile ana thread'e tasinir.)
         try:
-            self._alive = False
-            self.bg_running = False
-            self.destroy()
-        except Exception:
-            pass
-        try:
-            import os as _o
-            _o._exit(0)
+            self._post_ui(self._on_close)
         except Exception:
             pass
 
