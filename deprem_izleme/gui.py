@@ -506,6 +506,11 @@ class DepremGUI(ctk.CTk):
     def _drain_ui_queue(self):
         """Ana thread yoklayıcısı: kuyruktaki UI işlerini sırayla çalıştır."""
         try:
+            try:
+                if not self.winfo_exists():
+                    return
+            except Exception:
+                return
             while True:
                 try:
                     func = self._ui_queue.get_nowait()
@@ -589,6 +594,16 @@ class DepremGUI(ctk.CTk):
             _bt = getattr(self, "bg_thread", None)
             if _bt is not None and _bt.is_alive():
                 _bt.join(timeout=10)
+        except Exception:
+            pass
+        try:
+            # Bekleyen after-callback'leri iptal et (kutuphane dahil):
+            # destroy sonrasi tetiklenenler "invalid command name" uretir.
+            for _aid in self.tk.call("after", "info"):
+                try:
+                    self.after_cancel(_aid)
+                except Exception:
+                    pass
         except Exception:
             pass
         try:

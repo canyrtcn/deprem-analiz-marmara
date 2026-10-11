@@ -395,6 +395,44 @@ check("D14: sayac ayrimi metni", "görünür / " in _src14 and "benzersiz olay" 
 check("D14: imza icerik-hashi", "hexdigest" in _src14 and "_map_sync_sig" in _src14)
 check("D14: secim-filtre detayi", "filtre nedeniyle gizli" in _src14)
 
+# 15. v1.0.5.2: epoch onbellegi — davranis-esit + hizli
+from deprem_izleme.dedup import (
+    to_epoch as _te15, _to_epoch_uncached as _tu15, dedupe_records as _dd15)
+_b15 = [_bq(f"m{i}", (i % 200) * 60, m=2.0 + (i % 5) * 0.2,
+            src=["sismik", "kandilli", "afad"][i % 3]) for i in range(2000)]
+check("D15: onbellek davranisi esit",
+      all(_te15(q) == _tu15(q) for q in _b15[:200]))
+# Deterministik olcu: ikinci geciste ham parse cagrisi yapilmaz.
+import deprem_izleme.db as _DB15
+_calls = {"n": 0}
+_orig_parse = _DB15._parse_occurred_ts
+def _counting(*a, **k):
+    _calls["n"] += 1
+    return _orig_parse(*a, **k)
+_DB15._parse_occurred_ts = _counting
+try:
+    import deprem_izleme.dedup as _DD15
+    _DD15._EPOCH_CACHE.clear()
+    _r15a = _dd15(list(_b15))
+    _n1 = _calls["n"]
+    _calls["n"] = 0
+    _r15b = _dd15(list(_b15))
+    _n2 = _calls["n"]
+finally:
+    _DB15._parse_occurred_ts = _orig_parse
+check("D15: ikinci gecis parse yapmaz (onbellek calisiyor)", _n2 < _n1 // 2,
+      f"{_n1}->{_n2}")
+check("D15: sonuc ayni", [e["member_count"] for e in _r15a]
+      == [e["member_count"] for e in _r15b])
+
+# 16. Tcl after-yarisi: kapali pencereye zamanlanmis geri-cagrilar sessiz durur.
+_src16a = open(_os.path.join(REPO_ROOT, "deprem_izleme", "gui.py"), encoding="utf-8").read()
+_src16b = open(_os.path.join(REPO_ROOT, "deprem_izleme", "osm_map.py"), encoding="utf-8").read()
+check("D16: drain kuyrugu kapanis-korumali",
+      "def _drain_ui_queue" in _src16a and "winfo_exists" in _src16a)
+check("D16: warm tick kapanis-korumali",
+      "def _warm_tick" in _src16b and "winfo_exists" in _src16b)
+
 print()
 print("SONUC:", "TUMU PASS" if all(ok) else f"{ok.count(False)} FAIL")
 sys.exit(0 if all(ok) else 1)

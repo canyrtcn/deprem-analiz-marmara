@@ -400,8 +400,13 @@ class OsmMap(ctk.CTkFrame):
     def _warm_tick(self):
         # Ana thread: kuyrugu bosalt, PhotoImage uret, canvas'a bas.
         # Eski jenerasyon sonuclari o anki gorunumu EZEMEZ (gen + zoom
-        # cift kontrolu).
+        # cift kontrolu). Pencere kapandiysa sessizce dur (after-yarisi).
         try:
+            try:
+                if not self.winfo_exists():
+                    return
+            except Exception:
+                return
             my_gen = self._tile_gen
             from PIL import Image, ImageTk
             import io

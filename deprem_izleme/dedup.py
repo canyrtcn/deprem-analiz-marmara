@@ -83,13 +83,39 @@ def strong_id(q):
     return None
 
 
+_EPOCH_CACHE = {}
+_EPOCH_CACHE_LIMIT = 20000
+_EPOCH_MISS = object()
+
+
 def to_epoch(q):
     """Kayit -> epoch sn (yoksa None). Saat dilimi kaynaga gore.
 
-    Once occurred_at + kaynak kuraliyla hesaplar (eski satirlarin
-    3saatlik donem farkini duzeltir); yoksa kayitli timestamp alanina
-    duser. DB'ye yazmaz, yalnizca karsilastirma icindir.
+    Once occurred_at + kaynak kuraliyla hesaplar; yoksa kayitli
+    timestamp alanina duser. DB'ye yazmaz, yalnizca karsilastirma icindir.
+    Sonuclar kayit-imzaya gore onbelleklenir (saf fonksiyon; ayni girdi
+    ayni cikti — v1.0.5.2 performans iyilestirmesi, davranis ayni).
     """
+    try:
+        key = (str(q.get("source") or ""), str(q.get("event_id") or ""),
+               str(q.get("occurred_at") or ""), str(q.get("timestamp") or ""))
+        hit = _EPOCH_CACHE.get(key, _EPOCH_MISS)
+        if hit is not _EPOCH_MISS:
+            return hit
+    except Exception:
+        key = None
+    val = _to_epoch_uncached(q)
+    try:
+        if key is not None:
+            if len(_EPOCH_CACHE) >= _EPOCH_CACHE_LIMIT:
+                _EPOCH_CACHE.clear()
+            _EPOCH_CACHE[key] = val
+    except Exception:
+        pass
+    return val
+
+
+def _to_epoch_uncached(q):
     try:
         from deprem_izleme.db import _parse_occurred_ts
         ts = _parse_occurred_ts(q.get("occurred_at", ""),
