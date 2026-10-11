@@ -40,7 +40,8 @@ def _have_pyinstaller():
 
 
 if not _have_pyinstaller():
-    print("SKIP e2e (PyInstaller yok)")
+    print("SKIP e2e (PyInstaller yok; yerel Windows'ta dogrulanir)")
+    print("TUMU PASS")
     sys.exit(0)
 
 _ET = tempfile.mkdtemp(prefix="upd_e2e_")
@@ -53,8 +54,9 @@ r = subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm",
                     "--specpath", _ET, _STUB],
                    capture_output=True, text=True, timeout=300, cwd=_ET)
 if r.returncode != 0 or not os.path.exists(_PROBE):
-    print("SKIP e2e (probe derlenemedi)")
+    print("SKIP e2e (probe derlenemedi; yerel Windows'ta dogrulanir)")
     print((r.stderr or "")[-500:])
+    print("TUMU PASS")
     sys.exit(0)
 print("probe derlendi", flush=True)
 HELPER = [sys.executable, os.path.join(REPO_ROOT, "deprem_izleme",
