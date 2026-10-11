@@ -88,6 +88,36 @@ def main():
         print("Build BASARISIZ.")
         _restore_user_data(backup)
         return r.returncode
+    # Guncelleme yardimcisi: ayri console exe (kilitli ana exe'yi degistirir).
+    helper_cmd = [
+        sys.executable, "-m", "PyInstaller",
+        "--noconfirm",
+        "--name", "update-helper",
+        "--onefile",
+        "--console",
+        os.path.join(HERE, "deprem_izleme", "update_helper.py"),
+    ]
+    print("Calistiriliyor:", " ".join(helper_cmd))
+    r2 = subprocess.run(helper_cmd, cwd=HERE)
+    if r2.returncode != 0:
+        print("Helper build BASARISIZ.")
+        _restore_user_data(backup)
+        return r2.returncode
+    try:
+        import shutil as _sh
+        _built = os.path.join(HERE, "dist", "update-helper.exe")
+        _dst = os.path.join(_dist_dir(), "_internal", "update-helper.exe")
+        if os.path.exists(_built):
+            _sh.copy2(_built, _dst)
+            print("Helper yerlesti:", _dst)
+        else:
+            print("Helper ciktisi bulunamadi.")
+            _restore_user_data(backup)
+            return 1
+    except Exception as e:
+        print(f"Helper yerlestirilemedi: {e}")
+        _restore_user_data(backup)
+        return 1
     _restore_user_data(backup)
     out = os.path.join(_dist_dir(), EXE_NAME)
     print("Build tamam:", out)

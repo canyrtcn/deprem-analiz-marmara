@@ -7,7 +7,7 @@
 ![Lisans](https://img.shields.io/badge/License-MIT-43A047?style=flat-square)
 ![Arayüz](https://img.shields.io/badge/UI-CustomTkinter-495057?style=flat-square)
 ![Veritabanı](https://img.shields.io/badge/Database-SQLite-003B57?style=flat-square)
-[![Son sürüm](https://img.shields.io/badge/Release-v1.0.3-6F42C1?style=flat-square)](https://github.com/canyrtcn/deprem-analiz-marmara/releases/tag/v1.0.3)
+[![Son sürüm](https://img.shields.io/badge/Release-v1.0.4-6F42C1?style=flat-square)](https://github.com/canyrtcn/deprem-analiz-marmara/releases/tag/v1.0.4)
 
 **Deprem Analiz — Marmara**, Python, CustomTkinter ve SQLite ile geliştirilmiş açık kaynaklı bir Windows masaüstü uygulamasıdır. Deprem kayıtlarını yerel olarak saklar, geçmiş etkinliği analiz eder ve isteğe bağlı Telegram bildirimleri sunar.
 
@@ -38,7 +38,7 @@
 
 ### Windows için hazır paket
 
-**[Son sürüm: v1.0.3 — GitHub Releases](https://github.com/canyrtcn/deprem-analiz-marmara/releases/tag/v1.0.3)**
+**[Son sürüm: v1.0.4 — GitHub Releases](https://github.com/canyrtcn/deprem-analiz-marmara/releases/tag/v1.0.4)**
 
 1. `deprem-analiz-marmara-win64.zip` paketini indirin.
 2. ZIP arşivini bilgisayarınızda yazma izniniz olan bir klasöre çıkarın.
@@ -99,7 +99,7 @@ Bildirimler, seçtiğiniz eşiklere göre gönderilir. Bot tokenınızı paylaş
 
 ## Güncellemeler
 
-Uygulama yeni sürümleri bildirebilir; indirme ve kurulum [GitHub Releases](https://github.com/canyrtcn/deprem-analiz-marmara/releases) üzerinden **elle yapılır**. Otomatik güncelleme indirme ve kurma **devre dışıdır**.
+Uygulama yeni sürümleri bildirebilir. v1.0.4 ve sonrasında, kullanıcı onayıyla **imzalı güvenli otomatik kurulum** desteklenir: paket SHA-256 ve yayıncı imzasıyla doğrulanır, kullanıcı verileri (`data/`) korunur, başarısız kurulumda önceki sürüme dönülür. Dilerseniz indirme ve kurulumu [GitHub Releases](https://github.com/canyrtcn/deprem-analiz-marmara/releases) üzerinden **elle** de yapabilirsiniz.
 
 Önceki sürümleri ve değişikliklerini [Releases](https://github.com/canyrtcn/deprem-analiz-marmara/releases) sayfasında bulabilirsiniz.
 

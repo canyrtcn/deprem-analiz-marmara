@@ -2392,6 +2392,18 @@ class DepremGUI(ctk.CTk):
                                        font=ctk.CTkFont(size=10),
                                        text_color=COLOR_TEXT2)
         self.upd_status.pack(side="left")
+        self.upd_cancel = ctk.CTkButton(urow, text="İptal", font=ctk.CTkFont(size=10),
+                                        fg_color=COLOR_WARNING, height=28, width=70,
+                                        command=self._cancel_update)
+        # Yalnizca indirme/dogrulama sirasinda gosterilir.
+
+    def _cancel_update(self):
+        try:
+            self._update_cancel = True
+            self.upd_status.configure(text="Güncelleme iptal ediliyor...",
+                                      text_color=COLOR_WARNING)
+        except Exception:
+            pass
 
     # ================================================================
     # BACKGROUND WORKER
@@ -2660,41 +2672,66 @@ class DepremGUI(ctk.CTk):
             pass
 
     def _start_update_apply(self, info):
-        # SEC-03/04: otomatik indirme/kurma yolu kapali (B3 bekleniyor).
-        # Kullaniciyi yaniltmamak icin "Guncelle" degil aciklama gosterilir;
-        # kurulu uygulama ve veriler etkilenmez.
+        # v1.0.4: imzali guvenli akis; ilerleme penceresi + iptal destegi.
+        self._update_cancel = False
         try:
-            self.upd_status.configure(
-                text="Otomatik güncelleme kapalı (güvenlik denetimi).",
-                text_color=COLOR_WARNING)
+            self.upd_cancel.pack(side="left", padx=(10, 0))
         except Exception:
             pass
         try:
-            from tkinter import messagebox as _mb
-            page = (info or {}).get("page", "")
-            _mb.showinfo(
-                "Güncelleme Kapalı",
-                f"Yeni sürüm bulundu: v{info.get('version', '?')} "
-                f"(yüklü: v{APP_VERSION}).\n\n"
-                "İmzalı güvenli güncelleme henüz kurulmadığı için otomatik "
-                "indirme/kurma geçici olarak kapalıdır.\n"
-                "Yeni sürümü Releases sayfasından elle indirebilirsiniz."
-                + (f"\n\n{page}" if page else ""))
+            self.upd_status.configure(text="Güncelleme başlıyor...",
+                                      text_color=COLOR_WARNING)
+        except Exception:
+            pass
+        try:
+            import threading as _th
+            _th.Thread(target=self._update_apply_worker, args=(info,),
+                       daemon=True).start()
+        except Exception:
+            pass
+
+    def _update_progress(self, ev):
+        try:
+            kind = ev[0] if isinstance(ev, tuple) else "durum"
+            if kind == "indir":
+                mb = (ev[1] or 0) / (1024 * 1024)
+                self.upd_status.configure(
+                    text="Güncelleme indiriliyor... (%.1f MB)" % mb,
+                    text_color=COLOR_WARNING)
+            else:
+                self.upd_status.configure(text=str(ev[1]),
+                                          text_color=COLOR_WARNING)
         except Exception:
             pass
 
     def _update_apply_worker(self, info):
         try:
             from deprem_izleme import updater as _upd
-            ok, msg = _upd.download_and_apply(info, on_quit=self._quit_for_update)
+            st, msg = _upd.secure_update(
+                info, on_quit=self._quit_for_update,
+                progress_cb=lambda ev: self._post_ui(
+                    lambda: self._update_progress(ev)),
+                cancel=lambda: bool(getattr(self, "_update_cancel", False)))
+            self._post_ui(lambda: self._update_apply_done(st, msg, info))
         except Exception as ex:
-            ok, msg = False, f"Hata: {ex}"
-        self._post_ui(lambda: self._update_apply_done(ok, msg, info))
+            self._post_ui(lambda: self._update_apply_done("hata", f"Hata: {ex}",
+                                                         info))
 
-    def _update_apply_done(self, ok, msg, info):
+    def _update_apply_done(self, st, msg, info):
+        ok = (st == "hazir")
         try:
-            self.upd_status.configure(text=msg,
-                                      text_color=COLOR_SUCCESS if ok else COLOR_DANGER)
+            if ok:
+                text = "Güncelleme tamamlandı; yeniden başlatılıyor..."
+                col = COLOR_SUCCESS
+            elif st == "iptal":
+                text, col = msg, COLOR_WARNING
+            else:
+                text, col = msg, COLOR_DANGER
+            self.upd_status.configure(text=text, text_color=col)
+        except Exception:
+            pass
+        try:
+            self.upd_cancel.pack_forget()
         except Exception:
             pass
         if not ok:

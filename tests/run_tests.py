@@ -16,6 +16,8 @@ BATTERIES = [
     "test_db_state.py",
     "k3m1_guard_test.py",
     "test_mapfix.py",
+    "test_update.py",
+    "test_update_e2e.py",
     "fazb2_g1a_test.py",
     "fazb2_g1a_conc_test.py",
     "cli_exit_test.py",

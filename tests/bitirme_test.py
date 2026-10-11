@@ -122,6 +122,10 @@ SYN = _os.path.join(TESTTMP, "bitirme_v1.db")
 for s in ("", "-wal", "-shm", "-journal"):
     if os.path.exists(SYN + s):
         os.remove(SYN + s)
+# NOT: bu batarya kota mekanizmasini degil truncate bayragini test eder;
+# gunluk API kotasi (urun davranisi) burada baypas edilir.
+_F_check_limit_orig = F._check_limit
+F._check_limit = lambda: None
 with mock.patch.object(F, "build_api_request", return_value={"url": "https://x", "params": {}, "headers": {}}), \
      mock.patch.object(F.requests, "get", return_value=_R2()):
     F.fetch_and_store(days_back=7, min_magnitude=0.0, db_path=SYN)
@@ -132,22 +136,31 @@ with mock.patch.object(F, "build_api_request", return_value={"url": "https://x",
     F.fetch_earthquakes(7, 0.0)
 check("BUG03: ham sayi kayitli", F.fetch_earthquakes.last_raw_count == 1000,
       F.fetch_earthquakes.last_raw_count)
+F._check_limit = _F_check_limit_orig
 
 # 7. DOC-02/03
 rd = open(_os.path.join(REPO_ROOT, "README.md"), encoding="utf-8").read()
-check("DOC: otomatik kurulum devre disi",
-      "otomatik güncelleme" in rd.lower() and "devre dışı" in rd)
+check("DOC: otomatik kurulum guvenlik cercevesi",
+      "otomatik kurulum" in rd.lower() and "imza" in rd.lower())
 check("DOC: surum bildirimi manuel kurulumdan ayriliyor",
-      "yeni sürümleri bildirebilir" in rd and "elle yapılır" in rd)
+      "yeni sürümleri bildirebilir" in rd and "elle" in rd)
+check("DOC: imzali otomatik kurulum belgeli",
+      "imzalı güvenli otomatik kurulum" in rd and "önceki sürüme dönülür" in rd)
 check("DOC: GitHub Releases indirme adresi",
       "https://github.com/canyrtcn/deprem-analiz-marmara/releases" in rd)
 check("DOC: eski otomatik-kurma iddiasi yok", "değiştirir ve yeniden başlar" not in rd)
 
-# 8. SEC-03/04
-check("SEC: UPDATER_ENABLED False", U.UPDATER_ENABLED is False)
-with mock.patch.object(U, "download_package", side_effect=AssertionError("ag cagrisi YASAK")):
-    ok8, msg8 = U.download_and_apply({"url": "https://x/y.zip"}, on_quit=lambda: None)
-check("SEC: download_and_apply ag'a cikmadan red", ok8 is False and "kapal" in msg8, msg8[:40])
+# 8. SEC-03/04 (v1.0.4: imzali guvenli altyapi etkin)
+check("SEC: UPDATER_ENABLED True (imzali altyapi)", U.UPDATER_ENABLED is True)
+with mock.patch.object(U, "download_file", return_value=False):
+    st8, msg8 = U.secure_update({"url": "https://x/y.zip"}, on_quit=lambda: None)
+check("SEC: indirme hatasinda kapanma yok", st8 == "hata" and "ndirme" in msg8, msg8[:40])
+with mock.patch.object(U, "download_file", return_value=False):
+    _q = {"quit": False}
+    st8b, _ = U.secure_update({"url": "https://x/y.zip"},
+                              on_quit=lambda: _q.update(quit=True))
+check("SEC: hata yolunda on_quit cagrilmaz", st8b == "hata" and not _q["quit"])
+check("SEC: robocopy/MIR yolu kaldirildi", U.apply_update_bat(None) is False)
 
 # 9. SCI-09
 gsrc = open(_os.path.join(REPO_ROOT, "deprem_izleme/gui.py"), encoding="utf-8").read()
