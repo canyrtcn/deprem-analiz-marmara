@@ -152,10 +152,12 @@ check("DOC: eski otomatik-kurma iddiasi yok", "değiştirir ve yeniden başlar" 
 
 # 8. SEC-03/04 (v1.0.4: imzali guvenli altyapi etkin)
 check("SEC: UPDATER_ENABLED True (imzali altyapi)", U.UPDATER_ENABLED is True)
-with mock.patch.object(U, "download_file", return_value=False):
+with mock.patch.object(U, "download_file",
+                       return_value=(False, "ag-hatasi: test")):
     st8, msg8 = U.secure_update({"url": "https://x/y.zip"}, on_quit=lambda: None)
 check("SEC: indirme hatasinda kapanma yok", st8 == "hata" and "ndirme" in msg8, msg8[:40])
-with mock.patch.object(U, "download_file", return_value=False):
+with mock.patch.object(U, "download_file",
+                       return_value=(False, "ag-hatasi: test")):
     _q = {"quit": False}
     st8b, _ = U.secure_update({"url": "https://x/y.zip"},
                               on_quit=lambda: _q.update(quit=True))

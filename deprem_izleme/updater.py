@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 
 import requests
@@ -142,31 +143,98 @@ def _app_dir():
 
 
 def download_file(url, dest, progress_cb=None, cancel=None,
-                  timeout=DOWNLOAD_TIMEOUT, max_mb=500):
-    """Dosya indir (ilerleme bayt, iptal kontrolu). Donus: True/False."""
-    try:
-        size = 0
-        with requests.get(url, stream=True, timeout=timeout,
-                          headers={"User-Agent": "DepremAnaliz-Marmara-Updater"}) as r:
-            r.raise_for_status()
-            with open(dest, "wb") as f:
-                for chunk in r.iter_content(chunk_size=1024 * 256):
-                    if cancel is not None and cancel():
-                        return False
-                    if chunk:
-                        size += len(chunk)
-                        if size > max_mb * 1024 * 1024:
-                            raise RuntimeError("Paket boyutu sınırı aştı")
-                        f.write(chunk)
-                    if progress_cb is not None:
-                        try:
-                            progress_cb(size)
-                        except Exception:
-                            pass
-        return True
-    except Exception as e:
-        logger.error(f"İndirme başarısız: {e}")
-        return False
+                  timeout=DOWNLOAD_TIMEOUT, max_mb=500, expected_size=None,
+                  retries=3):
+    """Dosya indir (ilerleme bayt, iptal kontrolu, retry+resume).
+
+    Donus: (True, "") | (False, neden). neden: 'iptal' | 'ag-hatasi: ...' |
+    'boyut-uyusmazligi' | 'sunucu-hatasi: ...'.
+    Kismi indirme sessizce basarili SAYILMAZ: beklenen boyut tutmazsa red.
+    """
+    def _report(n):
+        if progress_cb is not None:
+            try:
+                progress_cb(n)
+            except Exception:
+                pass
+    last_err = ""
+    for attempt in range(max(1, int(retries))):
+        try:
+            have = 0
+            if os.path.exists(dest):
+                try:
+                    have = os.path.getsize(dest)
+                except Exception:
+                    have = 0
+            headers = {"User-Agent": "DepremAnaliz-Marmara-Updater"}
+            mode = "wb"
+            if have > 0:
+                headers["Range"] = f"bytes={have}-"
+                mode = "ab"
+            with requests.get(url, stream=True, timeout=timeout,
+                              headers=headers) as r:
+                if r.status_code == 416:
+                    # Aralık gecersiz (dosya tam inmis olabilir)
+                    if (expected_size and have == expected_size):
+                        _report(have)
+                        return True, ""
+                    try:
+                        os.remove(dest)
+                    except Exception:
+                        pass
+                    have, mode = 0, "wb"
+                    continue
+                if r.status_code not in (200, 206):
+                    r.raise_for_status()
+                if r.status_code == 206:
+                    # Content-Range dogrulamasi: sunucu istedigimiz
+                    # aralik disinda bayt donduruyorsa bastan basla.
+                    try:
+                        cr = r.headers.get("Content-Range") or ""
+                        # bicim: "bytes <ilk>-<son>/<toplam>"
+                        if cr.startswith("bytes "):
+                            first = int(cr.split(" ")[1].split("-")[0])
+                            if first != have:
+                                have, mode = 0, "wb"
+                                try:
+                                    os.remove(dest)
+                                except Exception:
+                                    pass
+                                continue
+                    except Exception:
+                        pass
+                if r.status_code == 200 and have > 0:
+                    # Sunucu resume desteklemiyor: bastan basla.
+                    have, mode = 0, "wb"
+                size = have
+                with open(dest, mode) as f:
+                    for chunk in r.iter_content(chunk_size=1024 * 256):
+                        if cancel is not None and cancel():
+                            return False, "iptal"
+                        if chunk:
+                            size += len(chunk)
+                            if size > max_mb * 1024 * 1024:
+                                return False, "boyut-siniri"
+                            f.write(chunk)
+                        _report(size)
+            want = expected_size
+            if want is None:
+                try:
+                    want = int(r.headers.get("Content-Length") or 0) or None
+                    if want and have > 0 and r.status_code == 206:
+                        want = None  # kismi yanitta toplam belirsiz
+                except Exception:
+                    want = None
+            if want and size != want:
+                last_err = (f"boyut-uyusmazligi (indirilen={size}, "
+                            f"beklenen={want})")
+                time.sleep(1.0)
+                continue
+            return True, ""
+        except Exception as e:
+            last_err = f"ag-hatasi: {e}"[:160]
+            time.sleep(1.5)
+    return False, (last_err or "ag-hatasi: bilinmiyor")
 
 
 def download_package(url, timeout=DOWNLOAD_TIMEOUT, max_mb=500,
@@ -175,8 +243,10 @@ def download_package(url, timeout=DOWNLOAD_TIMEOUT, max_mb=500,
     try:
         tmp = tempfile.mkdtemp(prefix="deprem_update_")
         dst = os.path.join(tmp, UPDATE_ASSET_NAME)
-        if download_file(url, dst, progress_cb=progress_cb, cancel=cancel,
-                         timeout=timeout, max_mb=max_mb):
+        ok, _why = download_file(url, dst, progress_cb=progress_cb,
+                                 cancel=cancel, timeout=timeout,
+                                 max_mb=max_mb)
+        if ok:
             return dst
         return None
     except Exception as e:
@@ -195,19 +265,35 @@ def _safe_extract(zip_path, dest):
 
 
 def stage_package(zip_path):
-    """Zip'i aç, içindeki uygulama klasörünü bul. (yol | None)."""
+    """Zip'i aç, içindeki uygulama klasörünü bul.
+
+    Donus: (yol, "") | (None, neden). neden: 'bozuk' (gecersiz ZIP) |
+    'guvenlik: ...' (yol denetimi) | 'ic-hata: ...' (uygulama hatasi).
+    Cagri yerleri mesaji oldugu gibi gosterir (yanlis 'bozuk' yok).
+    """
     try:
         tmp = tempfile.mkdtemp(prefix="deprem_stage_")
-        _safe_extract(zip_path, tmp)
+        try:
+            _safe_extract(zip_path, tmp)
+        except RuntimeError as e:
+            # _safe_extract guvenlik reddi (yol denetimi)
+            shutil.rmtree(tmp, ignore_errors=True)
+            return None, f"guvenlik: {e}"
+        except Exception as e:
+            name = type(e).__name__
+            shutil.rmtree(tmp, ignore_errors=True)
+            if "BadZip" in name or "LargeZip" in name:
+                return None, "bozuk"
+            return None, f"ic-hata: {name}"
         # Beklenen: tek klasör içinde exe; değilse zip kökü
         entries = [os.path.join(tmp, e) for e in os.listdir(tmp)]
         dirs = [e for e in entries if os.path.isdir(e)]
         if len(dirs) == 1 and len(entries) == 1:
-            return dirs[0]
-        return tmp
+            return dirs[0], ""
+        return tmp, ""
     except Exception as e:
         logger.error(f"Paket açılamadı: {e}")
-        return None
+        return None, f"ic-hata: {type(e).__name__}"
 
 
 def _public_key():
@@ -236,10 +322,12 @@ def verify_release(info, zip_path, workdir, progress_cb=None):
         sig_path = os.path.join(workdir, SIGNATURE_NAME)
         if not info.get("manifest_url") or not info.get("sig_url"):
             return False, "Paket doğrulanamadı (bildiri yok)"
-        if not download_file(info["manifest_url"], man_path):
-            return False, "İndirme başarısız (bildiri)"
-        if not download_file(info["sig_url"], sig_path):
-            return False, "İndirme başarısız (imza)"
+        ok, why = download_file(info["manifest_url"], man_path)
+        if not ok:
+            return False, f"İndirme başarısız (bildiri: {why})"
+        ok, why = download_file(info["sig_url"], sig_path)
+        if not ok:
+            return False, f"İndirme başarısız (imza: {why})"
         try:
             manifest = load_manifest(man_path)
             with open(sig_path, "rb") as f:
@@ -335,11 +423,17 @@ def secure_update(info, on_quit, progress_cb=None, cancel=None):
                 progress_cb(("durum", "Güncelleme indiriliyor..."))
             except Exception:
                 pass
-        if not download_file(url, zip_path, progress_cb=dl_prog,
-                             cancel=cancel):
-            if cancel is not None and cancel():
+        ok, why = download_file(url, zip_path, progress_cb=dl_prog,
+                                  cancel=cancel)
+        if not ok:
+            if (cancel is not None and cancel()) or why == "iptal":
                 return "iptal", "Güncelleme iptal edildi."
-            return "hata", "İndirme başarısız"
+            if why == "boyut-siniri":
+                return "hata", "İndirme başarısız (paket boyutu sınırı)"
+            if str(why).startswith("boyut-uyusmazligi"):
+                return "hata", ("İndirme tamamlanamadı (eksik veri; "
+                                "bağlantınızı kontrol edip tekrar deneyin)")
+            return "hata", f"İndirme başarısız ({why})"
         if progress_cb is not None:
             try:
                 progress_cb(("durum", "Paket doğrulanıyor..."))
@@ -359,9 +453,11 @@ def secure_update(info, on_quit, progress_cb=None, cancel=None):
                 progress_cb(("durum", "Güncelleme hazırlanıyor..."))
             except Exception:
                 pass
-        staged = stage_package(zip_path)
+        staged, stage_why = stage_package(zip_path)
         if not staged:
-            return "hata", "Paket açılamadı (bozuk indirme)"
+            if stage_why == "bozuk":
+                return "hata", "Paket açılamadı (bozuk indirme)"
+            return "hata", f"Paket hazırlanamadı ({stage_why})"
         staging = tempfile.mkdtemp(prefix="deprem_stage_")
         try:
             for e in os.listdir(staged):

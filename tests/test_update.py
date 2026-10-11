@@ -186,7 +186,7 @@ with _mk.patch.object(UP, "_public_key", return_value=_pub), \
      _mk.patch.object(UP, "download_file",
                       side_effect=lambda u, d, **k: (shutil.copy(
                           _mpath if u.endswith(".json") else _spath, d),
-                          True)[1]):
+                          (True, ""))[1]):
     ok, msg = UP.verify_release(_info("v9.9.9"), _zp, tempfile.mkdtemp())
 check("U4: gecerli zincir", ok, msg)
 
@@ -246,7 +246,8 @@ st, msg = UP.secure_update(
     _info("v9.9.9"), lambda: called.update(quit=True),
     cancel=lambda: True)
 check("U5: iptal", st == "iptal" and not called["quit"], msg)
-with _mk.patch.object(UP, "download_file", return_value=False):
+with _mk.patch.object(UP, "download_file",
+                       return_value=(False, "ag-hatasi: test")):
     called2 = {"quit": False}
     st, msg = UP.secure_update(
         _info("v9.9.9"), lambda: called2.update(quit=True))
@@ -436,6 +437,142 @@ _res27 = _js.load(open(os.path.join(_H27, "update-result.json"), encoding="utf-8
 check("U27: probe retry ile toparlar",
       _rc27 == 0 and _res27.get("ok") is True and _tries["n"] >= 3,
       f"rc={_rc27} deneme={_tries['n']}")
+
+# U30: import butunlugu (AST) — v1.0.4.1 zipfile-NameError regresyonu.
+# Guncelleme yurutme yolundaki her modul, kullandigi global isimleri
+# cozebilmeli; eksik import NameError uretmemeli.
+import ast as _ast
+_MODS = ["deprem_izleme/updater.py", "deprem_izleme/update_helper.py",
+         "deprem_izleme/update_manifest.py", "deprem_izleme/update_pubkey.py",
+         "scripts/sign_update.py", "scripts/probe_stub.py"]
+_BUILTINS = set(dir(__builtins__)) if isinstance(__builtins__, dict) \
+    else set(dir(__builtins__))
+_missing = []
+for _rel in _MODS:
+    _src = open(os.path.join(REPO_ROOT, _rel), encoding="utf-8").read()
+    _tree = _ast.parse(_src)
+    _imported = set()
+    for _node in _ast.walk(_tree):
+        if isinstance(_node, _ast.Import):
+            for _a in _node.names:
+                _imported.add((_a.asname or _a.name).split(".")[0])
+        elif isinstance(_node, _ast.ImportFrom):
+            for _a in _node.names:
+                _imported.add(_a.asname or _a.name)
+    _used = set()
+    for _node in _ast.walk(_tree):
+        if isinstance(_node, _ast.Name) and isinstance(_node.ctx, _ast.Load):
+            _used.add(_node.id)
+    _defined = set()
+    for _node in _ast.walk(_tree):
+        if isinstance(_node, ( _ast.FunctionDef, _ast.AsyncFunctionDef,
+                              _ast.ClassDef)):
+            _defined.add(_node.name)
+        elif isinstance(_node, _ast.arg):
+            _defined.add(_node.arg)
+    for _name in sorted(_used - _imported - _defined - _BUILTINS
+                        - {"True", "False", "None"}):
+        # modul-ici atama ile tanimlananlar (or. dongu degiskenleri,
+        # with-hedefleri) AST yukarida yakalanmaz; kaba filtre:
+        if f"{_name} =" in _src or f"({_name}" in _src or f", {_name}" in _src \
+           or f" {_name}:" in _src or f"\n{_name}:" in _src \
+           or f"for {_name} " in _src or f"as {_name}" in _src \
+           or f"def {_name}" in _src or f" {_name}(" in _src:
+            continue
+        _missing.append(f"{_rel}:{_name}")
+check("U30: import butunlugu (NameError yok)", not _missing, _missing[:5])
+
+# U31: v1.0.4.1 regresyonu — saglam ZIP stage'de NameError YEMEMELI.
+_st31, _why31 = UP.stage_package(_zp)
+check("U31: saglam ZIP acilir", _st31 is not None and _why31 == "",
+      _why31 or _st31)
+_bz31 = os.path.join(tempfile.mkdtemp(), "bozuk.zip")
+open(_bz31, "wb").write(b"degilzip")
+_stb, _whyb = UP.stage_package(_bz31)
+check("U31: bozuk ZIP 'bozuk' diye raporlanir",
+      _stb is None and _whyb == "bozuk", _whyb)
+with _mk.patch.object(UP, "_safe_extract",
+                      side_effect=RuntimeError("Güvensiz paket yolu: ../x")):
+    _stg, _whyg = UP.stage_package(_zp)
+check("U31: guvenlik reddi 'bozuk' diye maskelenmez",
+      _stg is None and _whyg.startswith("guvenlik"), _whyg[:40])
+with _mk.patch.object(UP, "_safe_extract",
+                      side_effect=ValueError("ic hata simulasyonu")):
+    _sth, _whyh = UP.stage_package(_zp)
+check("U31: ic-hata 'bozuk' diye maskelenmez",
+      _sth is None and _whyh.startswith("ic-hata"), _whyh[:40])
+
+# U32: retry/resume — ilk baglanti kesilirse kaldigi yerden tamamlar.
+import http.server as _hs
+import threading as _th
+_U32D = tempfile.mkdtemp(prefix="upd_u32_")
+_PAYLOAD = os.urandom(3 * 1024 * 1024)
+
+
+class _Flaky(_hs.BaseHTTPRequestHandler):
+    _n = 0
+    def log_message(self, *a):
+        pass
+    def do_GET(self):
+        _Flaky._n += 1
+        rng = self.headers.get("Range")
+        start = 0
+        if rng and rng.startswith("bytes="):
+            try:
+                start = int(rng.split("=")[1].split("-")[0])
+            except Exception:
+                start = 0
+        if _Flaky._n == 1:
+            # ilk deneme: yarisinda baglantiyi kes
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(_PAYLOAD)))
+            self.end_headers()
+            try:
+                self.wfile.write(_PAYLOAD[:len(_PAYLOAD) // 2])
+                self.wfile.flush()
+            except Exception:
+                pass
+            try:
+                self.connection.shutdown(1)
+            except Exception:
+                pass
+            return
+        body = _PAYLOAD[start:]
+        if start > 0:
+            self.send_response(206)
+            self.send_header("Content-Range",
+                             f"bytes {start}-{len(_PAYLOAD)-1}/{len(_PAYLOAD)}")
+        else:
+            self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+_srv = _hs.HTTPServer(("127.0.0.1", 0), _Flaky)
+_port = _srv.server_address[1]
+_th.Thread(target=_srv.serve_forever, daemon=True).start()
+_dst32 = os.path.join(_U32D, "f.bin")
+_ok32, _why32 = UP.download_file(f"http://127.0.0.1:{_port}/f.bin", _dst32,
+                                 expected_size=len(_PAYLOAD), retries=3)
+_got32 = open(_dst32, "rb").read() if os.path.exists(_dst32) else b""
+_srv.shutdown()
+check("U32: kesintili indirme resume ile tamamlanir",
+      _ok32 and _got32 == _PAYLOAD, f"{_why32} {len(_got32)}/{len(_PAYLOAD)}")
+
+# U33: kismi dosya sessizce basarili sayilmaz.
+_dst33 = os.path.join(_U32D, "g.bin")
+_half = _mk.Mock()
+_half.status_code = 200
+_half.headers = {"Content-Length": "1000"}
+_half.__enter__ = _mk.Mock(return_value=_half)
+_half.__exit__ = _mk.Mock(return_value=False)
+_half.iter_content = _mk.Mock(return_value=[b"yari"])
+_half.raise_for_status = _mk.Mock()
+with _mk.patch.object(UP.requests, "get", return_value=_half):
+    _ok33, _why33 = UP.download_file("https://x/y.bin", _dst33,
+                                     expected_size=1000, retries=1)
+check("U33: boyut tutmazsa red", not _ok33 and "boyut" in _why33, _why33[:60])
 
 print(f"\nBIRIM: {len(PASS)} PASS / {len(FAIL)} FAIL")
 if FAIL:
