@@ -19,7 +19,7 @@
 
 ![Deprem Analiz — Marmara, açık tema ana ekran](assets/demo_ana_ekran_acik_tema.png)
 
-*Ekran görüntüsünde, arayüzü tanıtmak için hazırlanmış **sentetik örnek veriler** kullanılmıştır.*
+*Ekran görüntüsünde arayüzü tanıtmak için hazırlanmış **sentetik örnek veriler** kullanılmıştır.*
 
 ## Özellikler
 
@@ -49,7 +49,7 @@
 
 ### Kaynak koddan çalıştırma
 
-Python 3.10 veya daha yeni bir Python 3 sürümü önerilir.
+Python 3.10 veya üzeri önerilir.
 
 ```bash
 python -m pip install -r requirements.txt
