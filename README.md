@@ -19,7 +19,7 @@
 
 ![Deprem Analiz — Marmara, açık tema ana ekran](assets/demo_ana_ekran_acik_tema.png)
 
-*Ekran görüntüsünde arayüzü tanıtmak için hazırlanmış **sentetik örnek veriler** kullanılmıştır.*
+*Ekran görüntüsünde, arayüzü tanıtmak için hazırlanmış **sentetik örnek veriler** kullanılmıştır.*
 
 ## Özellikler
 
